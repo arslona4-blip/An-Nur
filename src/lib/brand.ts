@@ -2,7 +2,7 @@
 export const PRODUCT_NAME = "An-Nur";
 export const PRODUCT_TAGLINE = "do'kon kassasi";
 export const PRODUCT_LOGO = "/brand/an-nur-logo.jpg";
-export const SPLASH_SHOW_MS = 10_000;
+export const SPLASH_SHOW_MS = 5_000;
 export const SPLASH_FADE_MS = 10_000;
 export const PRODUCT_DESCRIPTION =
   "Oziq-ovqat va ichimliklar do'koni uchun kassa, ombor va foyda hisobi";
