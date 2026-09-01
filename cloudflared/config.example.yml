@@ -1,0 +1,14 @@
+# An-Nur - Cloudflare Tunnel namuna
+# 1) cloudflared tunnel login
+# 2) cloudflared tunnel create an-nur-dokon
+# 3) Bu faylni config.yml deb saqlang va tunnel-id ni yozing
+# 4) cloudflared tunnel route dns an-nur-dokon kassa.example.uz
+# 5) An-Nur-Tunnel.cmd ni ishga tushiring
+
+tunnel: TUNNEL-ID-BU-YERGA
+credentials-file: C:\Users\SIZ\AppData\Local\An-Nur\cloudflared\TUNNEL-ID.json
+
+ingress:
+  - hostname: kassa.example.uz
+    service: http://127.0.0.1:3000
+  - service: http_status:404

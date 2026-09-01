@@ -1,0 +1,61 @@
+AN-NUR — CLOUDFLARE TUNNEL
+==========================
+
+Internet orqali link: https://sizning-domen.uz
+
+
+BOSQICH 1 — cloudflared o'rnatish
+---------------------------------
+PowerShell da loyiha papkasida:
+
+  powershell -ExecutionPolicy Bypass -File scripts\install-cloudflared.ps1
+
+Terminalni yoping va qayta oching.
+
+
+BOSQICH 2 — TEZ SINOV (domen kerak emas)
+----------------------------------------
+1. An-Nur-Ishga-Tushirish.cmd ni ishga tushiring
+2. An-Nur-Tunnel-Sinov.cmd ni ishga tushiring
+3. Oynada chiqadigan linkni nusxalang:
+   https://....trycloudflare.com
+4. Shu linkni telefon yoki boshqa kompyuterdan oching
+
+Eslatma: sinov linki vaqtinchalik. Har safar yangilanishi mumkin.
+
+
+BOSQICH 3 — DOIMIY LINK (tavsiya)
+---------------------------------
+Kerak: Cloudflare akkaunt + domen (masalan annur.uz)
+
+1. Terminal: cloudflared tunnel login
+   (brauzer ochiladi, Cloudflare ga kiring)
+
+2. Tunnel yarating:
+   cloudflared tunnel create an-nur-dokon
+
+3. cloudflared\config.example.yml ni config.yml deb nusxalang
+   tunnel ID va hostname ni yozing
+
+4. DNS ulang:
+   cloudflared tunnel route dns an-nur-dokon kassa.annur.uz
+
+5. An-Nur-Ishga-Tushirish.cmd
+6. An-Nur-Tunnel.cmd
+
+Mijoz ochadi: https://kassa.annur.uz
+
+
+MUHIM
+-----
+- Do'kon kompyuteri yoqilgan bo'lishi kerak
+- An-Nur Server oynasi ochiq qolsin
+- Tunnel oynasi ham ochiq qolsin
+- Login: admin / admin123
+
+
+QO'LLAB-QUVVATLASH
+------------------
+Har bir mijoz uchun alohida subdomain:
+  kassa1.annur.uz
+  kassa2.annur.uz

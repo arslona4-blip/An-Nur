@@ -1,0 +1,98 @@
+AN-NUR — BULUT SERVER (24/7)
+============================
+PC o'chganda ham ishlaydi. Internet link: https://kassa.annur.uz
+
+
+KERAK BO'LADIGAN NARSALAR
+-------------------------
+1. GitHub akkaunt (bepul)
+2. Railway akkaunt (bepul boshlash): https://railway.app
+3. Domen (ixtiyoriy): annur.uz yoki Railway bergan link
+
+
+BOSQICH 1 — GitHub ga yuklash
+-----------------------------
+Terminal (loyiha papkasida):
+
+  git init
+  git add .
+  git commit -m "An-Nur cloud deploy"
+  git branch -M main
+
+GitHub da yangi repo yarating: an-nur
+Keyin:
+
+  git remote add origin https://github.com/SIZNING-USERNAME/an-nur.git
+  git push -u origin main
+
+
+BOSQICH 2 — Railway da loyiha
+-----------------------------
+1. https://railway.app ga kiring
+2. New Project → Deploy from GitHub repo
+3. an-nur reponi tanlang
+4. Deploy boshlanadi (3-5 daqiqa)
+
+
+BOSQICH 3 — Volume (ma'lumotlar saqlanishi)
+-------------------------------------------
+MUHIM: SQLite fayl yo'qolmasin.
+
+1. Railway → loyiha → Service → Settings
+2. Volumes → Add Volume
+3. Mount Path: /app/data
+4. Redeploy qiling
+
+
+BOSQICH 4 — Environment Variables
+---------------------------------
+Railway → Variables:
+
+  HISOB_SECRET = uzun-tasodifiy-parol-masalan-32-harf
+  NODE_ENV = production
+  ANNUR_DATA_DIR = /app/data
+
+
+BOSQICH 5 — Link olish
+----------------------
+Railway → Settings → Networking → Generate Domain
+
+Sizga link beriladi:
+  https://an-nur-production-xxxx.up.railway.app
+
+Shu link doim ishlaydi — PC o'chsa ham.
+
+
+BOSQICH 6 — O'z domeningiz (ixtiyoriy)
+--------------------------------------
+1. annur.uz sotib oling
+2. Railway → Custom Domain → kassa.annur.uz
+3. DNS da CNAME qo'shing (Railway ko'rsatadi)
+
+
+MIJOZGA BERISH
+--------------
+Har bir do'kon uchun alohida Railway loyiha yoki
+subdomain:
+
+  kassa1.annur.uz  →  Do'kon 1
+  kassa2.annur.uz  →  Do'kon 2
+
+Mijoz faqat link ochadi — hech narsa o'rnatmaydi.
+
+
+NARX
+----
+Railway: ~$5/oy (1 do'kon)
+Domen: ~$10/yil
+
+Mijozdan olish: $10-20/oy xizmat + server
+
+
+TEKSHIRUV
+---------
+1. Link ochiladi
+2. Login: admin / admin123
+3. Parolni o'zgartiring
+4. Kassa ishlaydi
+5. PC o'chirib, linkni qayta oching — ishlashi kerak

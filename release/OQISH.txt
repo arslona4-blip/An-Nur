@@ -1,0 +1,45 @@
+AN-NUR — DO'KON KASSASI
+========================
+
+O'RNATISH
+---------
+1. Node.js o'rnating (agar yo'q bo'lsa): https://nodejs.org/
+   — LTS versiyani tanlang (20 yoki 22)
+
+2. An-Nur-0.1.2-Setup.exe ni ishga tushiring
+   — Odatda shu papkaga o'rnatiladi:
+     C:\Users\SIZNING_ISMINGIZ\AppData\Local\An-Nur
+
+3. O'rnatish tugagach An-Nur-Ornatish.cmd avtomatik ishga tushadi
+   — Internet shart emas, hamma narsa paketda bor
+
+4. Bosh ekranda "An-Nur" yorlig'i paydo bo'ladi
+
+
+ISHLATISH
+---------
+• Bosh ekran → An-Nur
+• Yoki: An-Nur-Ishga-Tushirish.cmd
+
+Brauzerda ochiladi: http://localhost:3000
+
+Kirish:
+  Egasi:  admin / admin123
+  Kassir: kassir / kassir123
+
+Parolni Sozlamalar → Xodimlar dan o'zgartiring.
+
+
+MUHIM
+-----
+• Internet shart emas (offline ishlaydi)
+• Ma'lumotlar: data\hisob.db faylida
+• Har kuni zaxira oling (Sozlamalar → Zaxira)
+
+
+QO'LLAB-QUVVATLASH
+------------------
+Sizning An-Nur dileringiz bilan bog'laning.
+
+
+© An-Nur
