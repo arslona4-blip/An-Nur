@@ -39,7 +39,10 @@ export async function POST(req: Request) {
       address: body.address,
       deliveryFee: Number(body.deliveryFee || 0),
       note: body.note,
-      items: body.items || [],
+      items: ((body.items || []) as Array<{ product_id: number; qty: number }>).map((i) => ({
+        product_id: Number(i.product_id),
+        qty: Number(i.qty),
+      })),
     }) as unknown as { id: number };
     notifyDeliveryParties(order.id).catch(() => {});
     return NextResponse.json({ order: getDeliveryOrder(order.id) });

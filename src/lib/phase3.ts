@@ -145,7 +145,9 @@ export function createDeliveryOrder(input: {
   address: string;
   deliveryFee?: number;
   note?: string;
-  items: Array<{ product_id: number; qty: number }>;
+  items: Array<{ product_id: number; qty: number; price?: number }>;
+  allowNegative?: boolean;
+  externalRef?: string;
 }) {
   if (!input.items?.length) throw new Error("Mahsulot tanlang");
   if (!input.customerName.trim()) throw new Error("Mijoz nomi kerak");
@@ -154,18 +156,19 @@ export function createDeliveryOrder(input: {
 
   const db = getDb();
   const settings = getSettings();
-  const allowNeg = settings.allow_negative_stock === "1";
+  const allowNeg = input.allowNegative || settings.allow_negative_stock === "1";
 
   db.exec("BEGIN");
   try {
-    const lines: Array<{ p: ReturnType<typeof getProduct>; qty: number; total: number }> = [];
+    const lines: Array<{ p: ReturnType<typeof getProduct>; qty: number; price: number; total: number }> = [];
     for (const item of input.items) {
       const p = getProduct(item.product_id);
-      if (item.qty <= 0) throw new Error("Miqdor noto'g'ri");
+      if (!(item.qty > 0)) throw new Error("Miqdor noto'g'ri");
       if (!allowNeg && p.stock + 1e-9 < item.qty) {
         throw new Error(`${p.name}: omborda yetarli emas`);
       }
-      lines.push({ p, qty: item.qty, total: Math.round(item.qty * p.sell_price) });
+      const price = item.price !== undefined && Number.isFinite(item.price) && item.price >= 0 ? Math.round(item.price) : p.sell_price;
+      lines.push({ p, qty: item.qty, price, total: Math.round(item.qty * price) });
     }
     const subtotal = lines.reduce((s, l) => s + l.total, 0);
     const fee = Math.round(input.deliveryFee || 0);
@@ -192,12 +195,15 @@ export function createDeliveryOrder(input: {
         new Date().toISOString(),
       );
     const orderId = Number(info.lastInsertRowid);
+    if (input.externalRef) {
+      db.prepare("UPDATE delivery_orders SET external_ref = ? WHERE id = ?").run(input.externalRef, orderId);
+    }
     const itemStmt = db.prepare(
       `INSERT INTO delivery_order_items (order_id, product_id, name, unit, qty, sell_price, total) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     const stockStmt = db.prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
     for (const line of lines) {
-      itemStmt.run(orderId, line.p.id, line.p.name, line.p.unit, line.qty, line.p.sell_price, line.total);
+      itemStmt.run(orderId, line.p.id, line.p.name, line.p.unit, line.qty, line.price, line.total);
       stockStmt.run(line.qty, line.p.id);
     }
     db.exec("COMMIT");
