@@ -194,6 +194,13 @@ function ensureFoodCatalog(db: DatabaseSync) {
     | { value: string }
     | undefined;
   if (rowv?.value === FOOD_SETTINGS.catalog_version) return;
+  const live = db.prepare("SELECT value FROM settings WHERE key = 'store_live'").get() as { value: string } | undefined;
+  if (live?.value === "1") {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('catalog_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(FOOD_SETTINGS.catalog_version);
+    return;
+  }
   db.exec("PRAGMA foreign_keys = OFF;");
   db.exec(`
     DELETE FROM sale_items;
@@ -212,6 +219,58 @@ function ensureFoodCatalog(db: DatabaseSync) {
   );
   for (const [key, value] of Object.entries(FOOD_SETTINGS)) upsert.run(key, value);
   seedFoodCatalog(db, new Date().toISOString());
+}
+
+const STORE_DATA_TABLES = [
+  "sale_return_items",
+  "sale_returns",
+  "sale_items",
+  "sales",
+  "shifts",
+  "stock_in_items",
+  "stock_ins",
+  "inventory_count_items",
+  "inventory_counts",
+  "waste_records",
+  "delivery_order_items",
+  "delivery_orders",
+  "payments",
+  "discount_rules",
+  "sms_log",
+  "offline_queue",
+  "telegram_sessions",
+  "products",
+  "customers",
+  "suppliers",
+];
+
+export function resetStoreData() {
+  const db = getDb();
+  const existing = new Set(
+    rows<{ name: string }>(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()).map((t) => t.name),
+  );
+  db.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    db.exec("BEGIN");
+    for (const table of STORE_DATA_TABLES) {
+      if (existing.has(table)) db.exec(`DELETE FROM ${table}`);
+    }
+    if (existing.has("sqlite_sequence")) {
+      const names = STORE_DATA_TABLES.map((t) => `'${t}'`).join(",");
+      db.exec(`DELETE FROM sqlite_sequence WHERE name IN (${names})`);
+    }
+    const upsert = db.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    );
+    upsert.run("store_live", "1");
+    upsert.run("catalog_version", FOOD_SETTINGS.catalog_version);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
 }
 
 function seedFoodCatalog(db: DatabaseSync, now: string) {

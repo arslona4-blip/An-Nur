@@ -93,6 +93,16 @@ export function SettingsScreen() {
     a.click();
   }
 
+  async function resetData() {
+    const typed = prompt(
+      "Barcha mahsulot, savdo, smena, mijoz, ta'minotchi va qoldiqlar o'chiriladi.\nXodimlar, sozlamalar va toifalar qoladi.\nAvval zaxira nusxa yuklab olinadi.\n\nDavom etish uchun TOZALASH deb yozing:",
+    );
+    if (typed?.trim().toUpperCase() !== "TOZALASH") return;
+    await backup();
+    await api("/api/settings/reset", { method: "POST", body: JSON.stringify({ confirm: "TOZALASH" }) });
+    setMsg("Ma'lumotlar tozalandi. Endi o'z mahsulotlaringizni qo'shing.");
+  }
+
   async function testTelegram() {
     await api("/api/telegram", { method: "POST", body: JSON.stringify({ action: "test" }) });
     setMsg("Telegram test xabari yuborildi");
@@ -372,6 +382,16 @@ export function SettingsScreen() {
             />
           </label>
         </div>
+      </Card>
+      <Card className="border-red-200 p-4">
+        <div className="font-bold text-danger">Namunaviy ma'lumotlarni tozalash</div>
+        <p className="mb-3 mt-1 text-sm text-muted">
+          Yangi do‘konni toza boshlash uchun: mahsulotlar, savdolar, smenalar, mijozlar, ta'minotchilar va qoldiqlar
+          o‘chiriladi. Xodimlar, sozlamalar va toifalar saqlanadi. Oldin zaxira nusxa avtomatik yuklab olinadi.
+        </p>
+        <Button variant="danger" onClick={() => resetData().catch((e) => setMsg(e.message))}>
+          Tozalash
+        </Button>
       </Card>
       <Card className="p-4">
         <div className="font-bold">Windows avtomatik ishga tushish</div>
