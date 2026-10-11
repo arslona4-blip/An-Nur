@@ -7,7 +7,16 @@ import { createDeliveryOrder, getDeliveryOrder, updateDeliveryStatus } from "./p
 // The delivery bot shares this shop's single warehouse: it reads the catalogue from here and sends its orders here.
 
 export function requireBotKey(req: Request) {
-  const expected = process.env.ANNUR_BOT_KEY?.trim() || "";
+  requireKey(req, process.env.ANNUR_BOT_KEY);
+}
+
+// The owner's desktop assistant gets its own key: it may read reports but never place orders.
+export function requireAgentKey(req: Request) {
+  requireKey(req, process.env.ANNUR_AGENT_KEY);
+}
+
+function requireKey(req: Request, secret: string | undefined) {
+  const expected = secret?.trim() || "";
   const auth = req.headers.get("authorization") || "";
   const given = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const hash = (s: string) => createHash("sha256").update(s).digest();
@@ -41,6 +50,46 @@ export function catalog() {
     .all();
   // Until the owner clears the demo catalogue, the bot must not mirror it over its real products.
   return { live: live?.value === "1", products, at: new Date().toISOString() };
+}
+
+const SNAPSHOT_DAYS = 400;
+
+// Only the columns the assistant's reports read; no users, tokens or other settings ever leave the shop.
+export function agentSnapshot() {
+  const db = getDb();
+  const since = new Date(Date.now() - SNAPSHOT_DAYS * 86400000).toISOString();
+  const all = (sql: string, ...params: string[]) => db.prepare(sql).all(...params);
+  return {
+    at: new Date().toISOString(),
+    tables: {
+      sales: all(
+        "SELECT id, created_at, total, discount, debt_amount, payment_method FROM sales WHERE created_at >= ?",
+        since,
+      ),
+      sale_items: all(
+        `SELECT si.id, si.sale_id, si.product_id, si.name, si.unit, si.qty, si.total, si.buy_price
+         FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE s.created_at >= ?`,
+        since,
+      ),
+      sale_returns: all("SELECT id, created_at, total FROM sale_returns WHERE created_at >= ?", since),
+      sale_return_items: all(
+        `SELECT ri.return_id, ri.sale_item_id, ri.qty FROM sale_return_items ri
+         JOIN sale_returns r ON r.id = ri.return_id WHERE r.created_at >= ?`,
+        since,
+      ),
+      payments: all(
+        "SELECT kind, amount, created_at FROM payments WHERE kind = 'expense' AND created_at >= ?",
+        since,
+      ),
+      shifts: all("SELECT id, status FROM shifts WHERE status = 'open'"),
+      products: all(
+        "SELECT name, unit, stock, min_stock, sell_price, buy_price, expiry_date, active FROM products",
+      ),
+      settings: all("SELECT key, value FROM settings WHERE key = 'expiry_alert_days'"),
+      customers: all("SELECT name, phone, debt FROM customers WHERE debt > 0"),
+      suppliers: all("SELECT name, payable FROM suppliers WHERE payable > 0"),
+    },
+  };
 }
 
 type BotOrder = {
