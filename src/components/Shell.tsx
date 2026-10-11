@@ -73,7 +73,7 @@ export function Shell({
     router.refresh();
   }
 
-  function NavLinks({ compact }: { compact?: boolean }) {
+  function renderNavLinks(compact?: boolean) {
     return items.map((item) => {
       const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
       const Icon = item.icon;
@@ -114,7 +114,7 @@ export function Shell({
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 lg:p-3">
-          <NavLinks compact />
+          {renderNavLinks(true)}
         </nav>
         <div className="border-t border-white/10 p-3 lg:p-4">
           <div className="mb-3 hidden text-sm lg:block">
@@ -193,7 +193,7 @@ export function Shell({
               </button>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              <NavLinks />
+              {renderNavLinks()}
             </nav>
             <div className="border-t border-white/10 p-4 text-sm">
               <div className="font-semibold">{user.name}</div>

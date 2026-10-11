@@ -7,6 +7,7 @@ import {
   listDeliveryOrders,
   updateDeliveryStatus,
 } from "@/lib/phase3";
+import { notifyDeliveryParties } from "@/lib/telegram-bot";
 
 export async function GET(req: Request) {
   try {
@@ -30,18 +31,18 @@ export async function POST(req: Request) {
         order: updateDeliveryStatus(Number(body.id), body.status, body.paymentMethod),
       });
     }
-    return NextResponse.json({
-      order: createDeliveryOrder({
-        userId: user.id,
-        customerId: body.customerId,
-        customerName: body.customerName,
-        phone: body.phone,
-        address: body.address,
-        deliveryFee: Number(body.deliveryFee || 0),
-        note: body.note,
-        items: body.items || [],
-      }),
-    });
+    const order = createDeliveryOrder({
+      userId: user.id,
+      customerId: body.customerId,
+      customerName: body.customerName,
+      phone: body.phone,
+      address: body.address,
+      deliveryFee: Number(body.deliveryFee || 0),
+      note: body.note,
+      items: body.items || [],
+    }) as unknown as { id: number };
+    notifyDeliveryParties(order.id).catch(() => {});
+    return NextResponse.json({ order: getDeliveryOrder(order.id) });
   } catch (e) {
     return jsonError(e);
   }

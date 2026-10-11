@@ -34,10 +34,10 @@ export async function PUT(req: Request) {
     const body = await req.json();
     return NextResponse.json({
       users: updateUser(Number(body.id), {
-        name: body.name,
-        role: body.role,
-        active: body.active,
-        password: body.password,
+        name: typeof body.name === "string" ? body.name : undefined,
+        role: body.role === "admin" || body.role === "kassir" ? body.role : undefined,
+        active: typeof body.active === "boolean" ? body.active : undefined,
+        password: typeof body.password === "string" ? body.password : undefined,
       }),
     });
   } catch (e) {

@@ -45,3 +45,5 @@ next-env.d.ts
 /data/*.db
 /data/*.db-wal
 /data/*.db-shm
+/data/uploads/
+/data/.session-secret

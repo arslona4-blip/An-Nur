@@ -9,8 +9,8 @@ import { PRODUCT_LOGO, PRODUCT_NAME } from "@/lib/brand";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [urls, setUrls] = useState<string[]>([]);
@@ -27,11 +27,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await api("/api/auth/login", {
+      const res = await api<{ user: { role: string }; defaultPassword?: boolean }>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
-      router.replace("/");
+      router.replace(res.defaultPassword && res.user.role === "admin" ? "/xodimlar?parol=1" : "/");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Xatolik");
@@ -80,9 +80,11 @@ export default function LoginPage() {
           <Button type="submit" className="h-12 w-full text-base" disabled={loading}>
             {loading ? "Tekshirilmoqda..." : "Kirish"}
           </Button>
-          <div className="rounded-xl bg-bg p-3 text-xs text-muted">
-            Demo: <b>admin / admin123</b> yoki <b>kassir / kassir123</b>
-          </div>
+          {process.env.NODE_ENV !== "production" ? (
+            <div className="rounded-xl bg-bg p-3 text-xs text-muted">
+              Demo: <b>admin / admin123</b> yoki <b>kassir / kassir123</b>
+            </div>
+          ) : null}
           {urls.length ? (
             <div className="rounded-xl border border-line p-3 text-xs">
               <div className="mb-1 font-semibold text-ink">Telefon / planshet</div>

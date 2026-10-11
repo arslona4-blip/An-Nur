@@ -6,11 +6,13 @@ import { api } from "@/lib/client";
 
 type User = { id: number; username: string; name: string; role: "admin" | "kassir"; active: number };
 
-export function StaffScreen() {
+export function StaffScreen({ weakPassword = false }: { weakPassword?: boolean }) {
   const [users, setUsers] = useState<User[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: "", password: "", name: "", role: "kassir" });
+  const [edit, setEdit] = useState<{ id: number; username: string; name: string; role: string; password: string } | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function load() {
     setUsers((await api<{ users: User[] }>("/api/users")).users);
@@ -33,8 +35,29 @@ export function StaffScreen() {
   }
 
   async function toggle(u: User) {
-    await api("/api/users", { method: "PUT", body: JSON.stringify({ id: u.id, active: !u.active }) });
-    await load();
+    setError("");
+    try {
+      await api("/api/users", { method: "PUT", body: JSON.stringify({ id: u.id, active: !u.active }) });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
+
+  async function saveEdit() {
+    if (!edit) return;
+    setError("");
+    try {
+      await api("/api/users", {
+        method: "PUT",
+        body: JSON.stringify({ id: edit.id, name: edit.name, role: edit.role, password: edit.password || undefined }),
+      });
+      setNotice(edit.password ? `${edit.username}: parol yangilandi` : `${edit.username}: saqlandi`);
+      setEdit(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Xatolik");
+    }
   }
 
   return (
@@ -43,22 +66,64 @@ export function StaffScreen() {
         <h1 className="text-2xl font-extrabold">Xodimlar</h1>
         <Button onClick={() => setOpen(true)}>Xodim qo‘shish</Button>
       </div>
+      {weakPassword && !notice ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Siz standart parol bilan kirdingiz. Xavfsizlik uchun «Tahrirlash» orqali administrator va kassir parollarini
+          almashtiring.
+        </div>
+      ) : null}
+      {notice ? <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div> : null}
       {error ? <div className="text-sm text-danger">{error}</div> : null}
       <Card className="overflow-hidden">
         {users.map((u) => (
-          <div key={u.id} className="flex items-center justify-between border-b border-line px-4 py-3 last:border-0">
+          <div key={u.id} className="flex items-center justify-between gap-2 border-b border-line px-4 py-3 last:border-0">
             <div>
               <div className="font-semibold">{u.name}</div>
               <div className="text-xs text-muted">
                 {u.username} · {u.role === "admin" ? "Administrator" : "Kassir"}
               </div>
             </div>
-            <Button variant={u.active ? "ghost" : "gold"} onClick={() => toggle(u)}>
-              {u.active ? "Faol" : "O‘chiq"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setEdit({ id: u.id, username: u.username, name: u.name, role: u.role, password: "" })}
+              >
+                Tahrirlash
+              </Button>
+              <Button variant={u.active ? "ghost" : "gold"} onClick={() => toggle(u)}>
+                {u.active ? "Faol" : "O‘chiq"}
+              </Button>
+            </div>
           </div>
         ))}
       </Card>
+      <Modal open={!!edit} title={edit ? `Tahrirlash — ${edit.username}` : ""} onClose={() => setEdit(null)}>
+        {edit ? (
+          <div className="space-y-3">
+            <Field label="Ism">
+              <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+            </Field>
+            <Field label="Rol">
+              <Select value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}>
+                <option value="kassir">Kassir</option>
+                <option value="admin">Administrator</option>
+              </Select>
+            </Field>
+            <Field label="Yangi parol (o‘zgartirmaslik uchun bo‘sh qoldiring)">
+              <Input
+                type="password"
+                autoComplete="new-password"
+                value={edit.password}
+                onChange={(e) => setEdit({ ...edit, password: e.target.value })}
+                placeholder="kamida 6 belgi"
+              />
+            </Field>
+            <Button className="w-full" onClick={saveEdit}>
+              Saqlash
+            </Button>
+          </div>
+        ) : null}
+      </Modal>
       <Modal open={open} title="Yangi xodim" onClose={() => setOpen(false)}>
         <div className="space-y-3">
           <Field label="Ism">

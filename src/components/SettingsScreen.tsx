@@ -31,6 +31,13 @@ export function SettingsScreen() {
     sms_password: "",
     sms_sender: "4546",
     offline_mode_enabled: "1",
+    openai_api_key: "",
+    telegram_bot_enabled: "0",
+    telegram_webhook_secret: "",
+    telegram_webhook_url: "",
+    telegram_admin_ids: "",
+    telegram_courier_ids: "",
+    delivery_fee_default: "0",
   });
   const [msg, setMsg] = useState("");
 
@@ -61,6 +68,13 @@ export function SettingsScreen() {
         sms_password: d.settings.sms_password || "",
         sms_sender: d.settings.sms_sender || "4546",
         offline_mode_enabled: d.settings.offline_mode_enabled || "1",
+        openai_api_key: d.settings.openai_api_key || "",
+        telegram_bot_enabled: d.settings.telegram_bot_enabled || "0",
+        telegram_webhook_secret: d.settings.telegram_webhook_secret || "",
+        telegram_webhook_url: d.settings.telegram_webhook_url || "",
+        telegram_admin_ids: d.settings.telegram_admin_ids || "",
+        telegram_courier_ids: d.settings.telegram_courier_ids || "",
+        delivery_fee_default: d.settings.delivery_fee_default || "0",
       });
     });
   }, []);
@@ -87,6 +101,23 @@ export function SettingsScreen() {
   async function sendAlerts() {
     await api("/api/telegram", { method: "POST", body: JSON.stringify({ action: "alerts" }) });
     setMsg("Ogohlantirish yuborildi");
+  }
+
+  async function setWebhook() {
+    const url = form.telegram_webhook_url.trim() || prompt("Ommaviy HTTPS manzil (ngrok/cloudflare):");
+    if (!url) return;
+    await save();
+    const r = await api<{ url: string }>("/api/telegram", {
+      method: "POST",
+      body: JSON.stringify({ action: "setWebhook", url }),
+    });
+    setForm((f) => ({ ...f, telegram_webhook_url: url.replace(/\/$/, "") }));
+    setMsg(`Webhook ulandi: ${r.url}`);
+  }
+
+  async function deleteWebhook() {
+    await api("/api/telegram", { method: "POST", body: JSON.stringify({ action: "deleteWebhook" }) });
+    setMsg("Webhook o‘chirildi");
   }
 
   async function testSms() {
@@ -215,6 +246,83 @@ export function SettingsScreen() {
           Internetsiz savdo navbatini saqlash
         </label>
         <p className="text-xs text-muted">Telefon/planshetga «Uy ekraniga qo'shish» qiling. Internet qaytganida «Sinxronlash» tugmasi paydo bo'ladi.</p>
+      </Card>
+      <Card className="space-y-3 p-4">
+        <div className="font-bold">AI mahsulot (rasm orqali)</div>
+        <Field label="OpenAI API kaliti">
+          <Input
+            type="password"
+            value={form.openai_api_key}
+            onChange={(e) => setForm({ ...form, openai_api_key: e.target.value })}
+            placeholder="sk-..."
+          />
+        </Field>
+        <p className="text-xs text-muted">
+          Mahsulotlar → «Rasm orqali»: Telegram/WhatsApp skrinshotidan nom va narxni o‘qiydi, reklamabop rasm (narx yozuvi bilan) yasaydi. Kalit:{" "}
+          <a className="underline" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
+            platform.openai.com
+          </a>
+        </p>
+        <Button onClick={save}>Saqlash</Button>
+      </Card>
+      <Card className="space-y-3 p-4">
+        <div className="font-bold">Telegram yetkazib berish boti</div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.telegram_bot_enabled === "1"}
+            onChange={(e) => setForm({ ...form, telegram_bot_enabled: e.target.checked ? "1" : "0" })}
+          />
+          Bot yoqilgan (mijoz / kuryer / admin)
+        </label>
+        <Field label="Admin chat ID lar (vergul bilan)">
+          <Input
+            value={form.telegram_admin_ids}
+            onChange={(e) => setForm({ ...form, telegram_admin_ids: e.target.value })}
+            placeholder="123456789"
+          />
+        </Field>
+        <Field label="Kuryer chat ID lar">
+          <Input
+            value={form.telegram_courier_ids}
+            onChange={(e) => setForm({ ...form, telegram_courier_ids: e.target.value })}
+            placeholder="987654321"
+          />
+        </Field>
+        <Field label="Standart yetkazish narxi (so‘m)">
+          <Input
+            value={form.delivery_fee_default}
+            onChange={(e) => setForm({ ...form, delivery_fee_default: e.target.value })}
+          />
+        </Field>
+        <Field label="Webhook secret (ixtiyoriy)">
+          <Input
+            value={form.telegram_webhook_secret}
+            onChange={(e) => setForm({ ...form, telegram_webhook_secret: e.target.value })}
+            placeholder="tasodifiy-parol"
+          />
+        </Field>
+        <Field label="Ommaviy HTTPS manzil (ngrok va h.k.)">
+          <Input
+            value={form.telegram_webhook_url}
+            onChange={(e) => setForm({ ...form, telegram_webhook_url: e.target.value })}
+            placeholder="https://xxxx.ngrok-free.app"
+          />
+        </Field>
+        <p className="text-xs text-muted">
+          1) BotFather dan bot yarating, tokenni yuqoridagi «Bot token»ga yozing. 2) Botga /start yuboring — chat ID chiqadi.
+          3) Admin/kuryer ID larni shu yerga qo‘ying. 4) Internetdan ochiladigan HTTPS manzil kerak (masalan Cloudflare Tunnel /
+          ngrok), so‘ng «Webhook ulash».
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={save}>Saqlash</Button>
+          <Button variant="ghost" onClick={() => setWebhook().catch((e) => setMsg(e.message))}>
+            Webhook ulash
+          </Button>
+          <Button variant="ghost" onClick={() => deleteWebhook().catch((e) => setMsg(e.message))}>
+            Webhook o‘chirish
+          </Button>
+        </div>
       </Card>
       <Card className="space-y-3 p-4">
         <div className="font-bold">Telegram ogohlantirish</div>

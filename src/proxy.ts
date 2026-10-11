@@ -7,6 +7,7 @@ export function proxy(req: NextRequest) {
   const publicPath =
     pathname === "/login" ||
     pathname.startsWith("/api/auth/login") ||
+    pathname.startsWith("/api/telegram/webhook") ||
     pathname.startsWith("/api/access") ||
     pathname === "/manifest.webmanifest" ||
     pathname === "/sw.js" ||

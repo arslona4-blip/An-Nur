@@ -1,6 +1,10 @@
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getDb } from "./db";
 
 export type SessionUser = {
   id: number;
@@ -11,10 +15,27 @@ export type SessionUser = {
 
 const COOKIE = "hisob_session";
 
+let cachedSecret: Uint8Array | null = null;
+
 function secret() {
-  return new TextEncoder().encode(
-    process.env.HISOB_SECRET || "hisob-local-dev-secret-change-me",
-  );
+  if (cachedSecret) return cachedSecret;
+  let value = process.env.HISOB_SECRET?.trim();
+  if (!value) {
+    const dir = process.env.ANNUR_DATA_DIR || path.join(process.cwd(), "data");
+    const file = path.join(dir, ".session-secret");
+    try {
+      value = fs.readFileSync(file, "utf8").trim();
+    } catch {
+      value = "";
+    }
+    if (!value) {
+      value = randomBytes(48).toString("hex");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, value, { mode: 0o600 });
+    }
+  }
+  cachedSecret = new TextEncoder().encode(value);
+  return cachedSecret;
 }
 
 export async function signSession(user: SessionUser) {
@@ -30,7 +51,12 @@ export async function readSession(): Promise<SessionUser | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return payload as unknown as SessionUser;
+    const session = payload as unknown as SessionUser;
+    const current = getDb()
+      .prepare("SELECT id, username, name, role, active FROM users WHERE id = ?")
+      .get(session.id) as (SessionUser & { active: number }) | undefined;
+    if (!current || !current.active) return null;
+    return { id: current.id, username: current.username, name: current.name, role: current.role };
   } catch {
     return null;
   }

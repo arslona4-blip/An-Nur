@@ -208,7 +208,7 @@ export async function sendSms(phone: string, message: string) {
   const mobile = normalized.startsWith("998") ? normalized : `998${normalized.slice(-9)}`;
 
   let status = "sent";
-  let provider = settings.sms_provider || "eskiz";
+  const provider = settings.sms_provider || "eskiz";
   try {
     if (provider === "eskiz") {
       const token = settings.sms_token?.trim() || (await eskizToken());

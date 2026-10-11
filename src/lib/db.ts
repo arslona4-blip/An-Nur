@@ -15,6 +15,7 @@ import { linkSaleToShift, migratePhase1 } from "./phase1";
 import { listExpiringProducts, migratePhase2 } from "./phase2";
 import { migratePhase3 } from "./phase3";
 import { buildFiscalQr, getCurrentBranchId, migratePhase4 } from "./phase4";
+import { migratePhase5 } from "./phase5";
 
 type SqlRow = Record<string, unknown>;
 
@@ -37,6 +38,7 @@ export function getDb() {
     migratePhase2(db);
     migratePhase3(db);
     migratePhase4(db);
+    migratePhase5(db);
     globalForDb.hisobDb = db;
   }
   ensureFoodCatalog(globalForDb.hisobDb);
@@ -44,6 +46,7 @@ export function getDb() {
   migratePhase2(globalForDb.hisobDb);
   migratePhase3(globalForDb.hisobDb);
   migratePhase4(globalForDb.hisobDb);
+  migratePhase5(globalForDb.hisobDb);
   return globalForDb.hisobDb;
 }
 
@@ -366,6 +369,7 @@ export function createUser(input: {
 }) {
   const username = input.username.trim().toLowerCase();
   if (!username || !input.password || !input.name.trim()) throw new Error("Maydonlar to'ldirilishi shart");
+  if (input.password.length < 6) throw new Error("Parol kamida 6 belgidan iborat bo‘lsin");
   try {
     getDb()
       .prepare(
@@ -387,6 +391,15 @@ export function updateUser(
   const name = patch.name?.trim() || user.name;
   const role = patch.role || user.role;
   const active = patch.active === undefined ? user.active : patch.active ? 1 : 0;
+  if (user.role === "admin" && user.active && (role !== "admin" || !active)) {
+    const others = row<{ n: number }>(
+      getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1 AND id != ?").get(id),
+    );
+    if (!others?.n) throw new Error("Kamida bitta faol administrator qolishi kerak");
+  }
+  if (patch.password !== undefined && patch.password !== "" && patch.password.length < 6) {
+    throw new Error("Parol kamida 6 belgidan iborat bo‘lsin");
+  }
   getDb().prepare("UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?").run(name, role, active, id);
   if (patch.password) {
     getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(patch.password, 10), id);
@@ -429,6 +442,7 @@ export type Product = {
   min_stock: number;
   active: number;
   expiry_date: string | null;
+  image_url: string | null;
   created_at: string;
 };
 
@@ -462,14 +476,15 @@ export function createProduct(input: {
   stock?: number;
   min_stock?: number;
   expiry_date?: string | null;
+  image_url?: string | null;
 }) {
   if (!input.name.trim()) throw new Error("Mahsulot nomi kerak");
   const count = (getDb().prepare("SELECT COUNT(*) AS c FROM products").get() as { c: number }).c;
   const sku = `HIS-${String(count + 1).padStart(4, "0")}`;
   const info = getDb()
     .prepare(
-      `INSERT INTO products (sku, barcode, name, category_id, unit, buy_price, sell_price, stock, min_stock, expiry_date, active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      `INSERT INTO products (sku, barcode, name, category_id, unit, buy_price, sell_price, stock, min_stock, expiry_date, image_url, active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
     )
     .run(
       sku,
@@ -482,6 +497,7 @@ export function createProduct(input: {
       Number(input.stock || 0),
       Number(input.min_stock || 0),
       input.expiry_date || null,
+      input.image_url?.trim() || null,
       new Date().toISOString(),
     );
   return getProduct(Number(info.lastInsertRowid));
@@ -503,7 +519,7 @@ export function updateProduct(id: number, patch: Partial<Product> & { active?: b
   const current = getProduct(id);
   getDb()
     .prepare(
-      `UPDATE products SET barcode=?, name=?, category_id=?, unit=?, buy_price=?, sell_price=?, stock=?, min_stock=?, expiry_date=?, active=? WHERE id=?`,
+      `UPDATE products SET barcode=?, name=?, category_id=?, unit=?, buy_price=?, sell_price=?, stock=?, min_stock=?, expiry_date=?, image_url=?, active=? WHERE id=?`,
     )
     .run(
       patch.barcode ?? current.barcode,
@@ -515,6 +531,7 @@ export function updateProduct(id: number, patch: Partial<Product> & { active?: b
       Number(patch.stock ?? current.stock),
       Number(patch.min_stock ?? current.min_stock),
       patch.expiry_date !== undefined ? patch.expiry_date : current.expiry_date,
+      patch.image_url !== undefined ? patch.image_url : current.image_url,
       patch.active === undefined ? current.active : patch.active ? 1 : 0,
       id,
     );
