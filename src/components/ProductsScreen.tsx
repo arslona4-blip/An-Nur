@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2 } from "lucide-react";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
+import { ImportProducts } from "@/components/ImportProducts";
 import { api } from "@/lib/client";
 import { som, UNITS } from "@/lib/format";
 
@@ -254,6 +255,7 @@ export function ProductsScreen() {
               }}
             />
           </label>
+          <ImportProducts onDone={() => load().catch(() => {})} />
           <Button onClick={startCreate}>Yangi mahsulot</Button>
         </div>
       </div>
