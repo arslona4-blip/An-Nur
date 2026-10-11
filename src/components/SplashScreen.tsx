@@ -19,12 +19,12 @@ export function SplashScreen() {
     setVisible(true);
     document.body.classList.add("splash-lock");
 
-    const fadeTimer = window.setTimeout(() => setLeaving(true), SPLASH_SHOW_MS);
-    const hideTimer = window.setTimeout(() => {
+    const fadeTimer = window.setTimeout(() => {
+      setLeaving(true);
       sessionStorage.setItem(SPLASH_KEY, "1");
-      setVisible(false);
       document.body.classList.remove("splash-lock");
-    }, SPLASH_SHOW_MS + SPLASH_FADE_MS);
+    }, SPLASH_SHOW_MS);
+    const hideTimer = window.setTimeout(() => setVisible(false), SPLASH_SHOW_MS + SPLASH_FADE_MS);
 
     return () => {
       window.clearTimeout(fadeTimer);

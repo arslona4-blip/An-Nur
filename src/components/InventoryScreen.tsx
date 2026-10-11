@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { api } from "@/lib/client";
 import { qty, tashkentDateTime } from "@/lib/format";
@@ -27,7 +27,12 @@ type Count = {
 export function InventoryScreen() {
   const [counts, setCounts] = useState<Count[]>([]);
   const [active, setActive] = useState<Count | null>(null);
+  const drafts = useRef(new Map<number, number>());
   const [filter, setFilter] = useState("");
+  const activeId = active?.id;
+  useEffect(() => {
+    drafts.current.clear();
+  }, [activeId]);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,6 +75,7 @@ export function InventoryScreen() {
       method: "POST",
       body: JSON.stringify({ action: "update", countId: active.id, productId, actualQty }),
     });
+    if (drafts.current.get(productId) === actualQty) drafts.current.delete(productId);
     setActive(d.count);
   }
 
@@ -78,6 +84,9 @@ export function InventoryScreen() {
     if (!confirm("Farqlarni omborga qo'llashni tasdiqlaysizmi?")) return;
     setBusy(true);
     try {
+      for (const [productId, actualQty] of [...drafts.current]) {
+        await updateItem(productId, actualQty);
+      }
       const d = await api<{ count: Count }>("/api/inventory", {
         method: "POST",
         body: JSON.stringify({ action: "apply", countId: active.id }),
@@ -142,8 +151,14 @@ export function InventoryScreen() {
                   type="number"
                   step="0.001"
                   className="w-28"
+                  aria-label={it.name}
                   disabled={active.status !== "draft"}
                   defaultValue={it.actual_qty}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (e.target.value !== "" && Number.isFinite(v) && v !== it.actual_qty) drafts.current.set(it.product_id, v);
+                    else drafts.current.delete(it.product_id);
+                  }}
                   onBlur={(e) => {
                     const v = Number(e.target.value);
                     if (v !== it.actual_qty) updateItem(it.product_id, v).catch((err) => setError(err.message));

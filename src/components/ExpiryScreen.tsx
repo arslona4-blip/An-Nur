@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { api } from "@/lib/client";
-import { qty } from "@/lib/format";
+import { expiryLabel, qty } from "@/lib/format";
 
 type Expiring = {
   id: number;
@@ -80,7 +80,7 @@ export function ExpiryScreen() {
                 <td className="px-4 py-3">{qty(Number(p.stock), p.unit)}</td>
                 <td className="px-4 py-3">{p.expiry_date}</td>
                 <td className={`px-4 py-3 font-semibold ${p.days_left <= 2 ? "text-danger" : p.days_left <= 5 ? "text-amber-700" : ""}`}>
-                  {p.days_left} kun
+                  {expiryLabel(p.days_left)}
                 </td>
               </tr>
             ))}

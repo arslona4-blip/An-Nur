@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { jsonError, requireAdmin, requireUser } from "@/lib/auth";
 import { exportBackup, getSettings, setSettings } from "@/lib/db";
 
+const ADMIN_ONLY = /token|secret|password|api_key|sms_email|telegram_(admin|courier)_ids|telegram_chat_id/;
+
 export async function GET() {
   try {
-    await requireUser();
-    return NextResponse.json({ settings: getSettings() });
+    const user = await requireUser();
+    const settings = getSettings();
+    if (user.role !== "admin") {
+      for (const key of Object.keys(settings)) if (ADMIN_ONLY.test(key)) delete settings[key];
+    }
+    return NextResponse.json({ settings });
   } catch (e) {
     return jsonError(e);
   }

@@ -10,6 +10,12 @@ type Report = {
   to: string;
   sales: number;
   count: number;
+  deliveries: number;
+  deliveryCount: number;
+  returns: number;
+  returnCount: number;
+  waste: number;
+  revenue: number;
   cogs: number;
   gross: number;
   expenses: number;
@@ -44,10 +50,24 @@ export function ReportsScreen() {
 
   const cards = data
     ? [
-        { label: "Savdo", value: som(data.sales), sub: `${data.count} ta chek` },
+        {
+          label: "Savdo",
+          value: som(data.revenue),
+          sub: [
+            `${data.count} ta chek`,
+            data.deliveryCount ? `${data.deliveryCount} ta yetkazish` : "",
+            data.returnCount ? `qaytarish −${som(data.returns)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
         { label: "Tannarx", value: som(data.cogs), sub: "sotilgan tovar" },
         { label: "Yalpi foyda", value: som(data.gross), sub: "savdo − tannarx" },
-        { label: "Sof foyda", value: som(data.net), sub: "yalpi − xarajat" },
+        {
+          label: "Sof foyda",
+          value: som(data.net),
+          sub: data.waste ? `yalpi − xarajat − yo‘qotish (${som(data.waste)})` : "yalpi − xarajat",
+        },
       ]
     : [];
 

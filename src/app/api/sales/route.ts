@@ -29,6 +29,8 @@ export async function POST(req: Request) {
       foreignPaid: body.foreignPaid,
       note: body.note,
       items: body.items || [],
+      clientId: body.clientId ? String(body.clientId) : null,
+      soldAt: body.soldAt ? String(body.soldAt) : null,
     });
     return NextResponse.json({ sale });
   } catch (e) {

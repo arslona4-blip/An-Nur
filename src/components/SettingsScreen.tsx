@@ -150,6 +150,7 @@ export function SettingsScreen() {
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-2xl font-extrabold">Sozlamalar</h1>
+      <LicenseCard />
       <Card className="space-y-3 p-4">
         <Field label="Do‘kon nomi">
           <Input value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} />

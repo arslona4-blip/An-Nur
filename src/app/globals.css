@@ -95,6 +95,7 @@ body.splash-lock {
 
 .splash-screen--out {
   animation: splash-exit var(--splash-fade, 10s) ease-in-out forwards;
+  pointer-events: none;
 }
 
 .splash-screen--out .splash-screen__logo-wrap,

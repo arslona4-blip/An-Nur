@@ -11,6 +11,7 @@ export type SessionUser = {
   username: string;
   name: string;
   role: "admin" | "kassir";
+  mustChangePassword?: boolean;
 };
 
 const COOKIE = "hisob_session";
@@ -53,10 +54,16 @@ export async function readSession(): Promise<SessionUser | null> {
     const { payload } = await jwtVerify(token, secret());
     const session = payload as unknown as SessionUser;
     const current = getDb()
-      .prepare("SELECT id, username, name, role, active FROM users WHERE id = ?")
-      .get(session.id) as (SessionUser & { active: number }) | undefined;
+      .prepare("SELECT id, username, name, role, active, must_change_password FROM users WHERE id = ?")
+      .get(session.id) as (SessionUser & { active: number; must_change_password: number }) | undefined;
     if (!current || !current.active) return null;
-    return { id: current.id, username: current.username, name: current.name, role: current.role };
+    return {
+      id: current.id,
+      username: current.username,
+      name: current.name,
+      role: current.role,
+      mustChangePassword: current.must_change_password === 1,
+    };
   } catch {
     return null;
   }
@@ -83,6 +90,11 @@ export async function requireUser() {
   if (!user) {
     const err = new Error("Kirish talab qilinadi");
     (err as Error & { status: number }).status = 401;
+    throw err;
+  }
+  if (user.mustChangePassword) {
+    const err = new Error("Avval parolni almashtiring");
+    (err as Error & { status: number }).status = 403;
     throw err;
   }
   return user;

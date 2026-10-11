@@ -169,6 +169,13 @@ export function ProductsScreen() {
         expiry_date: form.expiry_date || null,
         image_url: form.image_url || null,
       };
+      if (
+        payload.sell_price > 0 &&
+        payload.buy_price > payload.sell_price &&
+        !window.confirm("Sotish narxi olish narxidan past — har sotuvda zarar bo‘ladi. Baribir saqlansinmi?")
+      ) {
+        return;
+      }
       if (editing) await api("/api/products", { method: "PUT", body: JSON.stringify(payload) });
       else await api("/api/products", { method: "POST", body: JSON.stringify(payload) });
       setOpen(false);

@@ -12,9 +12,10 @@ import {
 } from "./catalog";
 import { dayRange, periodRange, tashkentDate } from "./format";
 import { linkSaleToShift, migratePhase1 } from "./phase1";
-import { listExpiringProducts, migratePhase2 } from "./phase2";
+import { listExpiringProducts, migratePhase2, previewDiscounts } from "./phase2";
 import { migratePhase3 } from "./phase3";
 import { buildFiscalQr, getCurrentBranchId, migratePhase4 } from "./phase4";
+import { assertLicensed } from "./license";
 import { migratePhase5 } from "./phase5";
 
 type SqlRow = Record<string, unknown>;
@@ -166,6 +167,31 @@ function migrate(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at);
   `);
+  const hasFlag = (
+    db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info('users') WHERE name = 'must_change_password'").get() as {
+      c: number;
+    }
+  ).c;
+  if (!hasFlag) {
+    db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
+    const users = db.prepare("SELECT id, password_hash FROM users").all() as { id: number; password_hash: string }[];
+    const flag = db.prepare("UPDATE users SET must_change_password = 1 WHERE id = ?");
+    for (const u of users) {
+      if (DEFAULT_PASSWORDS.some((p) => bcrypt.compareSync(p, u.password_hash))) flag.run(u.id);
+    }
+  }
+  const hasClientId = (
+    db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info('sales') WHERE name = 'client_id'").get() as { c: number }
+  ).c;
+  if (!hasClientId) db.exec("ALTER TABLE sales ADD COLUMN client_id TEXT");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_client_id ON sales(client_id) WHERE client_id IS NOT NULL");
+}
+
+export const DEFAULT_PASSWORDS = ["admin123", "kassir123"];
+
+function checkNewPassword(password: string) {
+  if (password.length < 6) throw new Error("Parol kamida 6 belgidan iborat bo‘lsin");
+  if (DEFAULT_PASSWORDS.includes(password)) throw new Error("Bu parol hammaga ma'lum, boshqasini tanlang");
 }
 
 function seed(db: DatabaseSync) {
@@ -182,6 +208,7 @@ function seed(db: DatabaseSync) {
   db.prepare(
     "INSERT INTO users (username, password_hash, name, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)",
   ).run("kassir", kassirHash, "Sotuvchi", "kassir", now);
+  db.exec("UPDATE users SET must_change_password = 1");
 
   const setStmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
   for (const [key, value] of Object.entries(FOOD_SETTINGS)) setStmt.run(key, value);
@@ -195,7 +222,11 @@ function ensureFoodCatalog(db: DatabaseSync) {
     | undefined;
   if (rowv?.value === FOOD_SETTINGS.catalog_version) return;
   const live = db.prepare("SELECT value FROM settings WHERE key = 'store_live'").get() as { value: string } | undefined;
-  if (live?.value === "1") {
+  const hasData = (db.prepare("SELECT EXISTS(SELECT 1 FROM sales) OR EXISTS(SELECT 1 FROM products) AS x").get() as {
+    x: number;
+  }).x;
+  // A store that never pressed "reset" may still hold real sales; an app update must never wipe them.
+  if (live?.value === "1" || hasData) {
     db.prepare(
       "INSERT INTO settings (key, value) VALUES ('catalog_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(FOOD_SETTINGS.catalog_version);
@@ -386,7 +417,10 @@ export function setSettings(patch: Record<string, string>) {
   const stmt = getDb().prepare(
     "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   );
-  for (const [key, value] of Object.entries(patch)) stmt.run(key, value);
+  for (const [key, value] of Object.entries(patch)) {
+    if (key.startsWith("license_")) continue;
+    stmt.run(key, String(value ?? ""));
+  }
   return getSettings();
 }
 
@@ -398,6 +432,7 @@ export type UserRow = {
   active: number;
   created_at: string;
   password_hash?: string;
+  must_change_password?: number;
 };
 
 export function findUserByUsername(username: string) {
@@ -428,7 +463,7 @@ export function createUser(input: {
 }) {
   const username = input.username.trim().toLowerCase();
   if (!username || !input.password || !input.name.trim()) throw new Error("Maydonlar to'ldirilishi shart");
-  if (input.password.length < 6) throw new Error("Parol kamida 6 belgidan iborat bo‘lsin");
+  checkNewPassword(input.password);
   try {
     getDb()
       .prepare(
@@ -456,14 +491,25 @@ export function updateUser(
     );
     if (!others?.n) throw new Error("Kamida bitta faol administrator qolishi kerak");
   }
-  if (patch.password !== undefined && patch.password !== "" && patch.password.length < 6) {
-    throw new Error("Parol kamida 6 belgidan iborat bo‘lsin");
-  }
+  if (patch.password) checkNewPassword(patch.password);
   getDb().prepare("UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?").run(name, role, active, id);
   if (patch.password) {
-    getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(patch.password, 10), id);
+    getDb()
+      .prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
+      .run(bcrypt.hashSync(patch.password, 10), id);
   }
   return listUsers();
+}
+
+export function changeOwnPassword(id: number, current: string, next: string) {
+  const user = row<UserRow>(getDb().prepare("SELECT * FROM users WHERE id = ?").get(id));
+  if (!user || !user.active) throw new Error("Xodim topilmadi");
+  if (!bcrypt.compareSync(current, user.password_hash || "")) throw new Error("Joriy parol noto'g'ri");
+  if (current === next) throw new Error("Yangi parol eskisidan farq qilsin");
+  checkNewPassword(next);
+  getDb()
+    .prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
+    .run(bcrypt.hashSync(next, 10), id);
 }
 
 export type Category = { id: number; name: string; color: string; sort: number };
@@ -669,28 +715,50 @@ export function createSale(input: {
   foreignPaid?: number;
   note?: string;
   items: CartItem[];
+  clientId?: string | null;
+  soldAt?: string | null;
 }) {
   if (!input.items?.length) throw new Error("Savatcha bo'sh");
   const db = getDb();
+  assertLicensed();
+  const clientId = input.clientId ? String(input.clientId).slice(0, 64) : null;
+  if (clientId) {
+    const existing = db.prepare("SELECT id FROM sales WHERE client_id = ?").get(clientId) as { id: number } | undefined;
+    if (existing) return getSale(existing.id);
+  }
   const settings = getSettings();
-  const allowNeg = settings.allow_negative_stock === "1";
+  // An offline sale already happened at the counter: the goods and money changed hands, so it must not be rejected.
+  const soldAtMs = input.soldAt ? Date.parse(input.soldAt) : NaN;
+  const offline = Number.isFinite(soldAtMs) && soldAtMs <= Date.now() && soldAtMs > Date.now() - 30 * 86400000;
+  const allowNeg = settings.allow_negative_stock === "1" || offline;
   const usdRate = Number(settings.usd_rate || 12500);
 
   db.exec("BEGIN");
   try {
+    const ruleDiscounts = previewDiscounts(
+      input.items.map((item) => ({ product_id: item.product_id, qty: Number(item.qty) })),
+    ).itemDiscounts;
+    const used = new Map<number, number>();
     const lines = input.items.map((item) => {
       const p = getProduct(item.product_id);
-      if (item.qty <= 0) throw new Error("Miqdor noto'g'ri");
-      if (!allowNeg && p.stock + 1e-9 < item.qty) {
+      const qty = Number(item.qty);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error("Miqdor noto'g'ri");
+      if (!p.active && !offline) throw new Error(`${p.name}: sotuvdan olingan`);
+      if (!allowNeg && p.stock + 1e-9 < qty) {
         throw new Error(`${p.name}: omborda yetarli emas (${p.stock} ${p.unit})`);
       }
-      const discount = Math.round(item.discount || 0);
-      const total = Math.max(0, Math.round(item.qty * p.sell_price) - discount);
-      return { p, qty: item.qty, discount, total };
+      const gross = Math.round(qty * p.sell_price);
+      const left = Math.max(0, (ruleDiscounts[p.id] || 0) - (used.get(p.id) || 0));
+      const discount = Math.min(gross, left);
+      used.set(p.id, (used.get(p.id) || 0) + discount);
+      return { p, qty, discount, total: gross - discount };
     });
     const subtotal = lines.reduce((s, l) => s + Math.round(l.qty * l.p.sell_price), 0);
-    const discount = Math.round(input.discount || 0);
-    const total = Math.max(0, subtotal - discount);
+    const afterItems = lines.reduce((s, l) => s + l.total, 0);
+    const requested = Math.round(Number(input.discount) || 0);
+    if (requested < 0) throw new Error("Chegirma noto'g'ri");
+    const discount = Math.min(requested, afterItems);
+    const total = afterItems - discount;
     const method = input.paymentMethod;
     if (method === "qarz" && !input.customerId) throw new Error("Qarzga sotish uchun mijoz tanlang");
     if (method === "usd" && settings.usd_enabled !== "1") throw new Error("USD to'lovi o'chirilgan");
@@ -709,24 +777,27 @@ export function createSale(input: {
       if (paid + 1 < total) throw new Error("USD to'lov yetarli emas");
       change = Math.max(0, paid - total);
     } else {
-      paid = method === "qarz" ? Math.round(input.paid || 0) : Math.round(input.paid ?? total);
+      paid = method === "qarz" ? Math.round(Number(input.paid) || 0) : Math.round(Number(input.paid ?? total));
+      if (!Number.isFinite(paid) || paid < 0) throw new Error("To'lov summasi noto'g'ri");
       if (method !== "qarz" && paid < total) throw new Error("To'lov summasi yetarli emas");
+      if (method === "qarz" && paid > total) throw new Error("Qarzga sotishda to'lov summadan oshmasin");
       change = method === "naqd" ? Math.max(0, paid - total) : 0;
     }
 
     const debt = method === "qarz" ? total - paid : 0;
 
-    const day = tashkentDate().replace(/-/g, "");
+    const soldAt = offline ? new Date(soldAtMs) : new Date();
+    const day = tashkentDate(soldAt).replace(/-/g, "");
     const count = (
       db.prepare("SELECT COUNT(*) AS c FROM sales WHERE number LIKE ?").get(`S-${day}-%`) as { c: number }
     ).c;
     const number = `S-${day}-${String(count + 1).padStart(4, "0")}`;
-    const created = new Date().toISOString();
+    const created = soldAt.toISOString();
     const branchId = getCurrentBranchId();
     const info = db
       .prepare(
-        `INSERT INTO sales (number, user_id, customer_id, payment_method, subtotal, discount, total, paid, change_amount, debt_amount, note, created_at, currency, foreign_rate, foreign_paid, branch_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sales (number, user_id, customer_id, payment_method, subtotal, discount, total, paid, change_amount, debt_amount, note, created_at, currency, foreign_rate, foreign_paid, branch_id, client_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         number,
@@ -745,6 +816,7 @@ export function createSale(input: {
         foreignRate,
         foreignPaid,
         branchId,
+        clientId,
       );
     const saleId = Number(info.lastInsertRowid);
     const itemStmt = db.prepare(
@@ -828,13 +900,15 @@ export function createStockIn(input: {
   try {
     const lines = input.items.map((item) => {
       const p = getProduct(item.product_id);
-      if (item.qty <= 0) throw new Error("Miqdor noto'g'ri");
+      if (!Number.isFinite(item.qty) || item.qty <= 0) throw new Error("Miqdor noto'g'ri");
       const buy = Math.round(item.buy_price ?? p.buy_price);
       const sell = Math.round(item.sell_price ?? p.sell_price);
+      if (!Number.isFinite(buy) || !Number.isFinite(sell) || buy < 0 || sell < 0) throw new Error("Narx noto'g'ri");
       return { p, qty: item.qty, buy, sell, total: Math.round(item.qty * buy), expiry_date: item.expiry_date || null };
     });
     const total = lines.reduce((s, l) => s + l.total, 0);
     const paid = Math.round(input.paid || 0);
+    if (!Number.isFinite(paid) || paid < 0) throw new Error("To'lov summasi noto'g'ri");
     if (paid > total) throw new Error("To'lov summadan oshmasin");
     const day = tashkentDate().replace(/-/g, "");
     const count = (
@@ -892,7 +966,7 @@ export function addPayment(input: {
   partyId?: number | null;
 }) {
   const amount = Math.round(input.amount);
-  if (amount <= 0) throw new Error("Summa noto'g'ri");
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Summa noto'g'ri");
   const db = getDb();
   let partyName: string | null = null;
   db.exec("BEGIN");
@@ -949,30 +1023,23 @@ export function listPayments(kind?: string, from?: string, to?: string) {
 
 function cashDelta() {
   const db = getDb();
-  const sales = (db.prepare("SELECT COALESCE(SUM(paid - change_amount),0) AS s FROM sales WHERE payment_method = 'naqd'").get() as { s: number }).s;
-  const customer = (db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind = 'customer' AND method = 'naqd'").get() as { s: number }).s;
-  const income = (db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind IN ('income','cash_in') AND method = 'naqd'").get() as { s: number }).s;
-  const expense = (db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind IN ('expense','cash_out','supplier') AND method = 'naqd'").get() as { s: number }).s;
+  const sum = (sql: string) => (db.prepare(sql).get() as { s: number }).s;
+  const sales = sum("SELECT COALESCE(SUM(paid - change_amount),0) AS s FROM sales WHERE payment_method = 'naqd'");
+  const debtDownPayments = sum("SELECT COALESCE(SUM(paid),0) AS s FROM sales WHERE payment_method = 'qarz'");
+  const deliveries = sum("SELECT COALESCE(SUM(total),0) AS s FROM delivery_orders WHERE status = 'done' AND payment_method = 'naqd'");
+  const customer = sum("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind = 'customer' AND method = 'naqd'");
+  const income = sum("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind IN ('income','cash_in') AND method = 'naqd'");
+  const expense = sum("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind IN ('expense','cash_out','supplier') AND method = 'naqd'");
+  const refunds = sum("SELECT COALESCE(SUM(total),0) AS s FROM sale_returns WHERE refund_method = 'naqd'");
+  const stockInPaid = sum("SELECT COALESCE(SUM(paid),0) AS s FROM stock_ins");
   const opening = Number(getSettings().opening_cash || 0);
-  return opening + sales + customer + income - expense;
+  return opening + sales + debtDownPayments + deliveries + customer + income - expense - refunds - stockInPaid;
 }
 
 export function getDashboard() {
   const today = dayRange();
   const db = getDb();
-  const salesToday = db
-    .prepare("SELECT COALESCE(SUM(total),0) AS t, COUNT(*) AS c FROM sales WHERE created_at >= ? AND created_at < ?")
-    .get(today.start, today.end) as { t: number; c: number };
-  const profitToday = db
-    .prepare(
-      `SELECT COALESCE(SUM(si.total - si.buy_price * si.qty),0) AS p
-       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-       WHERE s.created_at >= ? AND s.created_at < ?`,
-    )
-    .get(today.start, today.end) as { p: number };
-  const expensesToday = db
-    .prepare("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind = 'expense' AND created_at >= ? AND created_at < ?")
-    .get(today.start, today.end) as { s: number };
+  const report = getReports(today.day, today.day);
   const debts = db.prepare("SELECT COALESCE(SUM(debt),0) AS s FROM customers").get() as { s: number };
   const payables = db.prepare("SELECT COALESCE(SUM(payable),0) AS s FROM suppliers").get() as { s: number };
   const lowStock = rows<Product>(
@@ -1005,13 +1072,13 @@ export function getDashboard() {
   );
   return {
     today: {
-      sales: salesToday.t,
-      count: salesToday.c,
-      profit: profitToday.p,
-      expenses: expensesToday.s,
-      net: profitToday.p - expensesToday.s,
+      sales: report.revenue,
+      count: report.count,
+      profit: report.gross,
+      expenses: report.expenses,
+      net: report.net,
     },
-    cash: cashDelta(),
+    cash: report.cash,
     debts: debts.s,
     payables: payables.s,
     lowStock,
@@ -1019,7 +1086,7 @@ export function getDashboard() {
     recent,
     chart,
     methods,
-    settings: getSettings(),
+    settings: { store_name: getSettings().store_name || "" },
   };
 }
 
@@ -1042,8 +1109,39 @@ export function getReports(from?: string, to?: string) {
   const income = db
     .prepare("SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE kind = 'income' AND created_at >= ? AND created_at < ?")
     .get(range.start, range.end) as { s: number };
-  const gross = sales.t - cogs.s;
-  const net = gross - expenses.s + income.s;
+  const deliveries = db
+    .prepare(
+      `SELECT COALESCE(SUM(total),0) AS t, COUNT(*) AS c FROM delivery_orders
+       WHERE status = 'done' AND delivered_at >= ? AND delivered_at < ?`,
+    )
+    .get(range.start, range.end) as { t: number; c: number };
+  // Delivery items don't store a purchase price, so the current one is used.
+  const deliveryCogs = db
+    .prepare(
+      `SELECT COALESCE(SUM(di.qty * COALESCE(p.buy_price, 0)),0) AS s
+       FROM delivery_order_items di JOIN delivery_orders d ON d.id = di.order_id
+       LEFT JOIN products p ON p.id = di.product_id
+       WHERE d.status = 'done' AND d.delivered_at >= ? AND d.delivered_at < ?`,
+    )
+    .get(range.start, range.end) as { s: number };
+  const returns = db
+    .prepare("SELECT COALESCE(SUM(total),0) AS t, COUNT(*) AS c FROM sale_returns WHERE created_at >= ? AND created_at < ?")
+    .get(range.start, range.end) as { t: number; c: number };
+  const returnsCogs = db
+    .prepare(
+      `SELECT COALESCE(SUM(ri.qty * COALESCE(si.buy_price, 0)),0) AS s
+       FROM sale_return_items ri JOIN sale_returns r ON r.id = ri.return_id
+       LEFT JOIN sale_items si ON si.id = ri.sale_item_id
+       WHERE r.created_at >= ? AND r.created_at < ?`,
+    )
+    .get(range.start, range.end) as { s: number };
+  const waste = db
+    .prepare("SELECT COALESCE(SUM(loss_amount),0) AS s FROM waste_records WHERE created_at >= ? AND created_at < ?")
+    .get(range.start, range.end) as { s: number };
+  const revenue = sales.t + deliveries.t - returns.t;
+  const totalCogs = Math.round(cogs.s + deliveryCogs.s - returnsCogs.s);
+  const gross = revenue - totalCogs;
+  const net = gross - expenses.s + income.s - waste.s;
   const byProduct = rows<{
     product_id: number;
     name: string;
@@ -1098,7 +1196,13 @@ export function getReports(from?: string, to?: string) {
     to: range.endDay,
     sales: sales.t,
     count: sales.c,
-    cogs: cogs.s,
+    deliveries: deliveries.t,
+    deliveryCount: deliveries.c,
+    returns: returns.t,
+    returnCount: returns.c,
+    waste: waste.s,
+    revenue,
+    cogs: totalCogs,
     gross,
     expenses: expenses.s,
     income: income.s,

@@ -28,6 +28,7 @@ type Sale = {
   id: number;
   number: string;
   total: number;
+  discount?: number;
   paid: number;
   change_amount: number;
   debt_amount: number;
@@ -170,22 +171,24 @@ export function KassaScreen() {
   async function checkout() {
     setError("");
     setBusy(true);
+    const paidNum = method === "qarz" ? Number(paid || 0) : method === "usd" ? Number(paid || 0) : Number(paid || total);
+    const payload = {
+      clientId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`,
+      customerId: customerId || null,
+      paymentMethod: method,
+      discount: Math.round(Number(discount || 0) + autoDiscount),
+      paid: method === "usd" ? Math.round(paidNum * usdRate) : paidNum,
+      foreignPaid: method === "usd" ? paidNum : undefined,
+      items: cart.map((l) => ({
+        product_id: l.product.id,
+        qty: l.qty,
+        discount: itemDiscounts[l.product.id] || 0,
+      })),
+    };
     try {
-      const paidNum = method === "qarz" ? Number(paid || 0) : method === "usd" ? Number(paid || 0) : Number(paid || total);
       const data = await api<{ sale: Sale }>("/api/sales", {
         method: "POST",
-        body: JSON.stringify({
-          customerId: customerId || null,
-          paymentMethod: method,
-          discount: Math.round(Number(discount || 0) + autoDiscount),
-          paid: method === "usd" ? Math.round(paidNum * usdRate) : paidNum,
-          foreignPaid: method === "usd" ? paidNum : undefined,
-          items: cart.map((l) => ({
-            product_id: l.product.id,
-            qty: l.qty,
-            discount: itemDiscounts[l.product.id] || 0,
-          })),
-        }),
+        body: JSON.stringify(payload),
       });
       setPayOpen(false);
       setCart([]);
@@ -201,18 +204,7 @@ export function KassaScreen() {
       await load("");
     } catch (e) {
       if (e instanceof NetworkError) {
-        queueOfflineSale({
-          customerId: customerId || null,
-          paymentMethod: method,
-          discount: Math.round(Number(discount || 0) + autoDiscount),
-          paid: method === "usd" ? Math.round(Number(paid || 0) * usdRate) : Number(paid || total),
-          foreignPaid: method === "usd" ? Number(paid || 0) : undefined,
-          items: cart.map((l) => ({
-            product_id: l.product.id,
-            qty: l.qty,
-            discount: itemDiscounts[l.product.id] || 0,
-          })),
-        });
+        queueOfflineSale({ ...payload, soldAt: new Date().toISOString() });
         setPayOpen(false);
         setCart([]);
         setDiscount(0);
@@ -348,7 +340,11 @@ export function KassaScreen() {
                     onClick={() =>
                       setCart((prev) =>
                         prev
-                          .map((l) => (l.product.id === line.product.id ? { ...l, qty: l.qty - (l.product.unit === "dona" ? 1 : 0.1) } : l))
+                          .map((l) =>
+                            l.product.id === line.product.id
+                              ? { ...l, qty: Math.round((l.qty - (l.product.unit === "dona" ? 1 : 0.1)) * 1000) / 1000 }
+                              : l,
+                          )
                           .filter((l) => l.qty > 0.0001),
                       )
                     }
@@ -362,7 +358,7 @@ export function KassaScreen() {
                       setCart((prev) =>
                         prev.map((l) =>
                           l.product.id === line.product.id
-                            ? { ...l, qty: l.qty + (l.product.unit === "dona" ? 1 : 0.1) }
+                            ? { ...l, qty: Math.round((l.qty + (l.product.unit === "dona" ? 1 : 0.1)) * 1000) / 1000 }
                             : l,
                         ),
                       )
@@ -371,7 +367,7 @@ export function KassaScreen() {
                     +
                   </button>
                 </div>
-                <button className="p-1 text-muted" onClick={() => setCart((prev) => prev.filter((l) => l.product.id !== line.product.id))}>
+                <button aria-label="O‘chirish" className="p-1 text-muted" onClick={() => setCart((prev) => prev.filter((l) => l.product.id !== line.product.id))}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -448,7 +444,18 @@ export function KassaScreen() {
           {PAYMENT_METHODS.filter((m) => m.id !== "usd" || usdEnabled).map((m) => (
             <button
               key={m.id}
-              onClick={() => setMethod(m.id)}
+              onClick={() => {
+                setMethod(m.id);
+                setPaid(
+                  m.id === "qarz"
+                    ? "0"
+                    : m.id === "usd"
+                      ? usdRate > 0
+                        ? (Math.ceil((total / usdRate) * 100) / 100).toFixed(2)
+                        : ""
+                      : String(total),
+                );
+              }}
               className={`rounded-xl border px-3 py-3 text-sm font-semibold ${method === m.id ? "border-brand bg-brand text-white" : "border-line"}`}
             >
               {m.label}
@@ -506,6 +513,12 @@ export function KassaScreen() {
                 </div>
               ))}
               <hr className="my-2" />
+              {receipt.discount ? (
+                <div className="flex justify-between">
+                  <span>Chegirma</span>
+                  <span className="num">−{som(receipt.discount)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between font-bold">
                 <span>Jami</span>
                 <span className="num">{som(receipt.total)}</span>

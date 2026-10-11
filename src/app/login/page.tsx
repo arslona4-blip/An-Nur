@@ -27,11 +27,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await api<{ user: { role: string }; defaultPassword?: boolean }>("/api/auth/login", {
+      const res = await api<{ user: { role: string }; mustChangePassword?: boolean }>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
-      router.replace(res.defaultPassword && res.user.role === "admin" ? "/xodimlar?parol=1" : "/");
+      router.replace(res.mustChangePassword ? "/parol" : "/");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Xatolik");

@@ -91,6 +91,9 @@ export function createDiscountRule(input: {
   min_amount?: number | null;
 }) {
   if (!input.name.trim()) throw new Error("Qoida nomi kerak");
+  const value = Number(input.value);
+  const target = input.target || "all";
+  validateDiscountRule({ ...input, value, target });
   const info = getDb()
     .prepare(
       `INSERT INTO discount_rules (name, kind, value, target, target_id, min_qty, min_amount, active, created_at)
@@ -99,9 +102,9 @@ export function createDiscountRule(input: {
     .run(
       input.name.trim(),
       input.kind,
-      input.value,
-      input.target || "all",
-      input.target_id ?? null,
+      value,
+      target,
+      target === "all" ? null : input.target_id,
       input.min_qty ?? null,
       input.min_amount ?? null,
       new Date().toISOString(),
@@ -109,9 +112,38 @@ export function createDiscountRule(input: {
   return row<DiscountRule>(getDb().prepare("SELECT * FROM discount_rules WHERE id = ?").get(Number(info.lastInsertRowid)));
 }
 
+function validateDiscountRule(r: {
+  kind: string;
+  value: number;
+  target: string;
+  target_id?: number | null;
+  min_qty?: number | null;
+  min_amount?: number | null;
+}) {
+  if (r.kind !== "percent" && r.kind !== "fixed") throw new Error("Chegirma turi noto'g'ri");
+  if (!Number.isFinite(r.value) || r.value <= 0) throw new Error("Chegirma qiymati 0 dan katta bo'lishi kerak");
+  if (r.kind === "percent" && r.value > 100) throw new Error("Foiz 100 dan oshmasligi kerak");
+  if (!["all", "category", "product"].includes(r.target)) throw new Error("Qamrov noto'g'ri");
+  if (r.target !== "all" && !r.target_id) throw new Error(r.target === "product" ? "Mahsulotni tanlang" : "Kategoriyani tanlang");
+  for (const v of [r.min_qty, r.min_amount]) {
+    if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) throw new Error("Minimal qiymat noto'g'ri");
+  }
+}
+
 export function updateDiscountRule(id: number, patch: Partial<DiscountRule> & { active?: boolean | number }) {
   const cur = row<DiscountRule>(getDb().prepare("SELECT * FROM discount_rules WHERE id = ?").get(id));
   if (!cur) throw new Error("Qoida topilmadi");
+  const changesRule = (["kind", "value", "target", "target_id", "min_qty", "min_amount"] as const).some(
+    (k) => patch[k] !== undefined,
+  );
+  if (changesRule) validateDiscountRule({
+    kind: patch.kind ?? cur.kind,
+    value: Number(patch.value ?? cur.value),
+    target: patch.target ?? cur.target,
+    target_id: patch.target_id !== undefined ? patch.target_id : cur.target_id,
+    min_qty: patch.min_qty !== undefined ? patch.min_qty : cur.min_qty,
+    min_amount: patch.min_amount !== undefined ? patch.min_amount : cur.min_amount,
+  });
   getDb()
     .prepare(
       `UPDATE discount_rules SET name=?, kind=?, value=?, target=?, target_id=?, min_qty=?, min_amount=?, active=? WHERE id=?`,

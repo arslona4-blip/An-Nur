@@ -191,6 +191,11 @@ export function createReturn(input: {
   const shift = getOpenShift(input.userId);
   db.exec("BEGIN");
   try {
+    const itemsSum = Number(
+      (db.prepare("SELECT COALESCE(SUM(total),0) AS s FROM sale_items WHERE sale_id = ?").get(input.saleId) as { s: number })
+        .s,
+    );
+    const saleShare = itemsSum > 0 ? Math.min(1, Number((sale as SqlRow).total) / itemsSum) : 1;
     let total = 0;
     const lines: Array<{
       sale_item_id: number;
@@ -206,10 +211,11 @@ export function createReturn(input: {
       if (!si) throw new Error("Savdo qatori topilmadi");
       const already = returnedQty(item.sale_item_id);
       const max = Number(si.qty) - already;
-      if (item.qty <= 0 || item.qty > max + 1e-9) {
+      if (!Number.isFinite(item.qty) || item.qty <= 0 || item.qty > max + 1e-9) {
         throw new Error(`${si.name}: maksimum ${max} qaytarish mumkin`);
       }
-      const lineTotal = Math.round(item.qty * Number(si.sell_price));
+      const paidPerUnit = Number(si.qty) > 0 ? Number(si.total) / Number(si.qty) : Number(si.sell_price);
+      const lineTotal = Math.round(item.qty * paidPerUnit * saleShare);
       total += lineTotal;
       lines.push({
         sale_item_id: item.sale_item_id,
@@ -352,6 +358,7 @@ export function updateInventoryItem(countId: number, productId: number, actualQt
     getDb().prepare("SELECT system_qty FROM inventory_count_items WHERE count_id = ? AND product_id = ?").get(countId, productId),
   );
   if (!item) throw new Error("Mahsulot topilmadi");
+  if (!Number.isFinite(actualQty) || actualQty < 0) throw new Error("Miqdor noto'g'ri");
   const diff = actualQty - Number(item.system_qty);
   getDb()
     .prepare("UPDATE inventory_count_items SET actual_qty = ?, diff = ? WHERE count_id = ? AND product_id = ?")
@@ -366,9 +373,10 @@ export function applyInventoryCount(countId: number) {
   const items = db.prepare("SELECT * FROM inventory_count_items WHERE count_id = ? AND ABS(diff) > 0.0001").all(countId);
   db.exec("BEGIN");
   try {
-    const upd = db.prepare("UPDATE products SET stock = ? WHERE id = ?");
+    // Apply the difference, not the counted figure: sales made while counting have already moved the stock.
+    const upd = db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
     for (const item of items) {
-      upd.run(Number(item.actual_qty), item.product_id);
+      upd.run(Number(item.diff), item.product_id);
     }
     db.prepare("UPDATE inventory_counts SET status = 'applied', applied_at = ? WHERE id = ?").run(new Date().toISOString(), countId);
     db.exec("COMMIT");
@@ -532,7 +540,9 @@ export function exportProductsCsv() {
 }
 
 function csvEsc(v: string) {
-  if (v.includes(",") || v.includes('"')) return `"${v.replace(/"/g, '""')}"`;
+  // Excel runs cells starting with these as formulas.
+  if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
   return v;
 }
 
@@ -547,10 +557,16 @@ export function exportReportsCsv(from?: string, to?: string) {
   const waste = getDb()
     .prepare("SELECT COALESCE(SUM(loss_amount),0) AS s FROM waste_records WHERE created_at >= ? AND created_at < ?")
     .get(range.start, range.end) as { s: number };
+  const deliveries = getDb()
+    .prepare(
+      "SELECT COALESCE(SUM(total),0) AS t, COUNT(*) AS c FROM delivery_orders WHERE status = 'done' AND delivered_at >= ? AND delivered_at < ?",
+    )
+    .get(range.start, range.end) as { t: number; c: number };
   return [
     "Hisobot",
     `Davr,${range.startDay},${range.endDay}`,
     `Savdo,${sales.t},${sales.c} ta chek`,
+    `Yetkazib berish,${deliveries.t},${deliveries.c} ta`,
     `Qaytarish,${returns.t},${returns.c} ta`,
     `Yo'qotish,${waste.s},`,
   ].join("\n");

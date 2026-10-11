@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { api } from "@/lib/client";
-import { methodLabel, som, tashkentDateTime } from "@/lib/format";
+import { expiryLabel, methodLabel, som, tashkentDateTime } from "@/lib/format";
 
 type Dash = {
-  today: { sales: number; count: number; profit: number; expenses: number; net: number };
-  cash: number;
+  today: { sales: number; count: number; profit: number | null; expenses: number | null; net: number | null };
+  cash: number | null;
   debts: number;
-  payables: number;
+  payables: number | null;
   lowStock: Array<{ id: number; name: string; stock: number; min_stock: number; unit: string }>;
   expiring: Array<{ id: number; name: string; expiry_date: string; days_left: number; stock: number; unit: string }>;
   recent: Array<{
@@ -42,10 +42,10 @@ export function DashboardScreen() {
   const max = Math.max(...data.chart.map((c) => c.total), 1);
   const cards = [
     { label: "Bugungi savdo", value: som(data.today.sales), sub: `${data.today.count} ta chek` },
-    { label: "Foyda", value: som(data.today.profit), sub: "sotish − tannarx" },
-    { label: "Kassadagi naqd", value: som(data.cash), sub: "hozirgi qoldiq" },
+    data.today.profit != null ? { label: "Foyda", value: som(data.today.profit), sub: "sotish − tannarx" } : null,
+    data.cash != null ? { label: "Kassadagi naqd", value: som(data.cash), sub: "hozirgi qoldiq" } : null,
     { label: "Mijoz qarzi", value: som(data.debts), sub: "haqdorlar" },
-  ];
+  ].filter((c) => c !== null);
 
   return (
     <div className="space-y-6">
@@ -90,14 +90,18 @@ export function DashboardScreen() {
                 <span className="num font-semibold">{som(m.t)}</span>
               </div>
             ))}
-            <div className="flex justify-between border-t border-line pt-2 text-muted">
-              <span>Ta’minotchi qarzi</span>
-              <span className="num">{som(data.payables)}</span>
-            </div>
-            <div className="flex justify-between text-muted">
-              <span>Bugungi xarajat</span>
-              <span className="num">{som(data.today.expenses)}</span>
-            </div>
+            {data.payables != null ? (
+              <div className="flex justify-between border-t border-line pt-2 text-muted">
+                <span>Ta’minotchi qarzi</span>
+                <span className="num">{som(data.payables)}</span>
+              </div>
+            ) : null}
+            {data.today.expenses != null ? (
+              <div className="flex justify-between text-muted">
+                <span>Bugungi xarajat</span>
+                <span className="num">{som(data.today.expenses)}</span>
+              </div>
+            ) : null}
           </div>
           <Link href="/kassa" className="mt-4 block rounded-xl bg-brand py-3 text-center text-sm font-semibold text-white">
             Kassani ochish
@@ -152,7 +156,7 @@ export function DashboardScreen() {
               <div key={`${p.id}-${i}`} className="flex items-center justify-between px-4 py-3 text-sm">
                 <span>{p.name}</span>
                 <span className={`num ${p.days_left <= 2 ? "text-danger font-semibold" : "text-amber-700"}`}>
-                  {p.days_left} kun
+                  {expiryLabel(p.days_left)}
                 </span>
               </div>
             ))}

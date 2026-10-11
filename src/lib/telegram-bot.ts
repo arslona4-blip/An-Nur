@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { PRODUCT_NAME } from "./brand";
 import { createProduct, getDb, getSettings, listCategories, listProducts } from "./db";
@@ -608,18 +609,19 @@ export async function setTelegramWebhook(publicBaseUrl: string) {
   const token = botToken();
   if (!token) throw new Error("Bot token yo‘q");
   const base = publicBaseUrl.replace(/\/$/, "");
-  const secret = getSettings().telegram_webhook_secret?.trim() || "";
+  const secret = getSettings().telegram_webhook_secret?.trim() || randomBytes(24).toString("hex");
   const url = `${base}/api/telegram/webhook`;
-  const body: Record<string, unknown> = {
+  await tgApi("setWebhook", {
     url,
     allowed_updates: ["message", "callback_query"],
     drop_pending_updates: true,
-  };
-  if (secret) body.secret_token = secret;
-  await tgApi("setWebhook", body);
-  getDb()
-    .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-    .run("telegram_webhook_url", base);
+    secret_token: secret,
+  });
+  const upsert = getDb().prepare(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  );
+  upsert.run("telegram_webhook_url", base);
+  upsert.run("telegram_webhook_secret", secret);
   return { url };
 }
 

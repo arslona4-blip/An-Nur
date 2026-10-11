@@ -23,6 +23,12 @@ const kinds = [
   { id: "cash_out", label: "Kassadan olish" },
 ];
 
+const kindLabels: Record<string, string> = {
+  ...Object.fromEntries(kinds.map((k) => [k.id, k.label])),
+  customer: "Mijoz to‘lovi",
+  supplier: "Ta’minotchiga to‘lov",
+};
+
 export function MoneyScreen() {
   const [rows, setRows] = useState<Payment[]>([]);
   const [kind, setKind] = useState("expense");
@@ -107,7 +113,7 @@ export function MoneyScreen() {
               <tr key={r.id} className="border-t border-line">
                 <td className="px-4 py-3 text-muted">{tashkentDateTime(r.created_at)}</td>
                 <td className="px-4 py-3">
-                  {kinds.find((k) => k.id === r.kind)?.label || r.kind}
+                  {kindLabels[r.kind] || r.kind}
                   {r.category ? ` · ${r.category}` : ""}
                 </td>
                 <td className="px-4 py-3">{r.note || r.party_name || "—"}</td>

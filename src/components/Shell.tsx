@@ -25,7 +25,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { SessionUser } from "@/lib/auth";
 import { PRODUCT_LOGO, PRODUCT_NAME } from "@/lib/brand";
 
@@ -66,6 +66,11 @@ export function Shell({
   const [menu, setMenu] = useState(false);
   const items = useMemo(() => NAV.filter((n) => n.roles.includes(user.role)), [user.role]);
   const quick = items.slice(0, 4);
+  const forbidden = NAV.some((n) => n.href !== "/" && path.startsWith(n.href) && !n.roles.includes(user.role));
+
+  useEffect(() => {
+    if (forbidden) router.replace("/");
+  }, [forbidden, router]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -149,7 +154,7 @@ export function Shell({
             Chiqish
           </button>
         </header>
-        <main className="flex-1 p-4 pb-28 md:p-6 md:pb-6">{children}</main>
+        <main className="flex-1 p-4 pb-28 md:p-6 md:pb-6">{forbidden ? null : children}</main>
         <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] md:hidden">
           {quick.map((item) => {
             const Icon = item.icon;

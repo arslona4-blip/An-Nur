@@ -40,6 +40,12 @@ export function tashkentDateTime(iso: string) {
   }).format(new Date(iso));
 }
 
+export function expiryLabel(daysLeft: number) {
+  if (daysLeft < 0) return `Muddati o‘tgan (${Math.abs(daysLeft)} kun)`;
+  if (daysLeft === 0) return "Bugun tugaydi";
+  return `${daysLeft} kun`;
+}
+
 export function dayRange(dateStr?: string) {
   const day = dateStr || tashkentDate();
   const start = new Date(`${day}T00:00:00+05:00`);
