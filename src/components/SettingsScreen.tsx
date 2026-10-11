@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
+import { LicenseCard } from "@/components/LicenseCard";
 import { api } from "@/lib/client";
 import { PRODUCT_NAME } from "@/lib/brand";
 
