@@ -15,6 +15,11 @@ export function requireAgentKey(req: Request) {
   requireKey(req, process.env.ANNUR_AGENT_KEY);
 }
 
+// Writing to the till is a separate key, given only to the assistant on the shop's own computer.
+export function requireAgentWriteKey(req: Request) {
+  requireKey(req, process.env.ANNUR_AGENT_WRITE_KEY);
+}
+
 function requireKey(req: Request, secret: string | undefined) {
   const expected = secret?.trim() || "";
   const auth = req.headers.get("authorization") || "";
@@ -83,7 +88,7 @@ export function agentSnapshot() {
       ),
       shifts: all("SELECT id, status FROM shifts WHERE status = 'open'"),
       products: all(
-        "SELECT name, unit, stock, min_stock, sell_price, buy_price, expiry_date, active FROM products",
+        "SELECT id, name, unit, stock, min_stock, sell_price, buy_price, expiry_date, active FROM products",
       ),
       settings: all("SELECT key, value FROM settings WHERE key = 'expiry_alert_days'"),
       customers: all("SELECT name, phone, debt FROM customers WHERE debt > 0"),
