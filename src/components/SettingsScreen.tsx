@@ -101,6 +101,7 @@ export function SettingsScreen() {
     await backup();
     await api("/api/settings/reset", { method: "POST", body: JSON.stringify({ confirm: "TOZALASH" }) });
     setMsg("Ma'lumotlar tozalandi. Endi o'z mahsulotlaringizni qo'shing.");
+    alert("✅ Tozalandi!\n\nMahsulotlar, savdolar va mijozlar o'chirildi.\nZaxira nusxa kompyuteringizga yuklab olindi.\n\nTekshirish: «Mahsulotlar» sahifasi bo'sh bo'lishi kerak.");
   }
 
   async function testTelegram() {
