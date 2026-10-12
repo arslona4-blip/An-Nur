@@ -161,7 +161,10 @@ export function listShifts(limit = 30) {
   return rows<SqlRow>(
     getDb()
       .prepare(
-        `SELECT sh.*, u.name AS user_name FROM shifts sh JOIN users u ON u.id = sh.user_id ORDER BY sh.id DESC LIMIT ?`,
+        `SELECT sh.*, u.name AS user_name,
+           CASE WHEN sh.status = 'open'
+             THEN (SELECT COALESCE(SUM(total),0) FROM sales WHERE shift_id = sh.id) ELSE sh.sales_total END AS sales_total
+         FROM shifts sh JOIN users u ON u.id = sh.user_id ORDER BY sh.id DESC LIMIT ?`,
       )
       .all(limit),
   );
