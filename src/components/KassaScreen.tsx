@@ -50,6 +50,7 @@ export function KassaScreen() {
   const [discount, setDiscount] = useState(0);
   const [payOpen, setPayOpen] = useState(false);
   const [method, setMethod] = useState("naqd");
+  const [presetMethod, setPresetMethod] = useState("naqd");
   const [paid, setPaid] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,8 +108,20 @@ export function KassaScreen() {
     const take = () => {
       if (document.hidden || busy) return;
       busy = true;
-      api<{ lines: CartLine[] }>("/api/agent-cart", { method: "POST" })
-        .then((d) => d.lines.forEach((l) => addProduct(l.product, l.qty)))
+      api<{ lines: Array<{ lines: CartLine[]; payment: string; customer: Customer | null }> }>("/api/agent-cart", {
+        method: "POST",
+      })
+        .then((d) =>
+          d.lines.forEach((order) => {
+            order.lines.forEach((l) => addProduct(l.product, l.qty));
+            if (order.customer) {
+              const c = order.customer;
+              setCustomers((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
+              setCustomerId(c.id);
+            }
+            if (order.payment !== "naqd") setPresetMethod(order.payment);
+          }),
+        )
         .catch(() => {})
         .finally(() => {
           busy = false;
@@ -227,6 +240,7 @@ export function KassaScreen() {
       setCart([]);
       setDiscount(0);
       setCustomerId(0);
+      setPresetMethod("naqd");
       setReceipt(data.sale);
       setFiscalQr(null);
       if (settings.fiscal_enabled === "1" && data.sale.id) {
@@ -241,6 +255,7 @@ export function KassaScreen() {
         setPayOpen(false);
         setCart([]);
         setDiscount(0);
+        setPresetMethod("naqd");
         setError("Server bilan aloqa yo'q — savdo offline navbatga saqlandi");
         return;
       }
@@ -434,8 +449,8 @@ export function KassaScreen() {
             className="h-12 w-full text-base"
             disabled={!cart.length}
             onClick={() => {
-              setMethod("naqd");
-              setPaid(String(total));
+              setMethod(presetMethod);
+              setPaid(presetMethod === "qarz" ? "0" : String(total));
               setError("");
               setPayOpen(true);
             }}

@@ -62,6 +62,12 @@ export function migratePhase3(db: DatabaseSync) {
       taken_at TEXT
     );
   `);
+  for (const [col, def] of [["customer_id", "INTEGER"], ["payment", "TEXT"]] as const) {
+    const has = (
+      db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('agent_cart') WHERE name = ?`).get(col) as { c: number }
+    ).c;
+    if (!has) db.exec(`ALTER TABLE agent_cart ADD COLUMN ${col} ${def}`);
+  }
 
   const saleCols = [
     ["currency", "TEXT DEFAULT 'UZS'"],

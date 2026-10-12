@@ -1,4 +1,14 @@
-import { addPayment, createProduct, createStockIn, getDb, getProduct, getSale } from "./db";
+import {
+  addPayment,
+  createCustomer,
+  createProduct,
+  createStockIn,
+  createSupplier,
+  getDb,
+  getProduct,
+  getSale,
+  updateProduct,
+} from "./db";
 import { som } from "./format";
 import { createReturn, findSaleByNumber } from "./phase1";
 
@@ -42,6 +52,25 @@ function lines(items: unknown): Line[] {
   }));
 }
 
+// Spoken names are matched to a customer or supplier: an exact name wins, a single name starting with it is
+// taken, several are asked about, and an unknown name becomes a new entry.
+function party(table: "customers" | "suppliers", name: string, who: string) {
+  const clean = name.trim();
+  if (!clean) fail(`${who} ismini ayting`);
+  const db = getDb();
+  const exact = db.prepare(`SELECT * FROM ${table} WHERE LOWER(name) = LOWER(?)`).all(clean) as SqlRow[];
+  const found = exact.length ? exact : (db.prepare(`SELECT * FROM ${table} WHERE LOWER(name) LIKE LOWER(?)`).all(`${clean}%`) as SqlRow[]);
+  if (found.length > 1) {
+    fail(`Ro'yxatda bir nechta «${clean}» bor: ${found.slice(0, 4).map((r) => r.name).join(", ")}. Qaysi biri ekanini to'liq ayting`);
+  }
+  if (found.length === 1) return { row: found[0], created: false };
+  const row = (table === "customers" ? createCustomer({ name: clean }) : createSupplier({ name: clean })) as SqlRow;
+  return { row, created: true };
+}
+
+const CART_METHODS: Record<string, string> = { naqd: "naqd", karta: "uzcard", otkazma: "otkazma", nasiya: "qarz", qarz: "qarz" };
+const CART_WORDS: Record<string, string> = { uzcard: "kartaga", otkazma: "o'tkazma bilan", qarz: "nasiyaga" };
+
 // A spoken sale goes into the till's cart; the cashier takes the payment there as with any other sale.
 // Lines nobody picked up within this window are dropped rather than appearing in a later customer's cart.
 const CART_TTL_MS = 10 * 60 * 1000;
@@ -53,12 +82,27 @@ function cart(body: SqlRow) {
     if (!(l.qty > 0)) fail("Miqdor noto'g'ri");
     return { product_id: l.product_id, qty: l.qty, name: String(p.name), unit: String(p.unit), price: Number(p.sell_price) };
   });
+  const method = CART_METHODS[String(body.payment || "naqd").toLowerCase()] || "naqd";
+  const customer = method === "qarz" ? party("customers", String(body.customer || ""), "Nasiya uchun mijozning") : null;
   const info = getDb()
-    .prepare("INSERT INTO agent_cart (items, created_at) VALUES (?, ?)")
-    .run(JSON.stringify(items.map(({ product_id, qty }) => ({ product_id, qty }))), new Date().toISOString());
+    .prepare("INSERT INTO agent_cart (items, customer_id, payment, created_at) VALUES (?, ?, ?, ?)")
+    .run(
+      JSON.stringify(items.map(({ product_id, qty }) => ({ product_id, qty }))),
+      customer ? Number(customer.row.id) : null,
+      method,
+      new Date().toISOString(),
+    );
   const total = Math.round(items.reduce((s, i) => s + i.price * i.qty, 0));
   const what = items.map((i) => `${i.name} ${i.qty} ${i.unit}`).join(", ");
-  return { kind: "cart", id: Number(info.lastInsertRowid), total, say: `Savatchaga qo'shdim: ${what}, ${som(total)}.` };
+  let say = `Savatchaga qo'shdim: ${what}, ${som(total)}`;
+  if (customer) {
+    say += `, ${customer.row.name} nomiga nasiyaga.`;
+    if (customer.created) say += " U yangi mijoz sifatida qo'shildi.";
+    else if (Number(customer.row.debt) > 0) say += ` Oldingi qarzi ${som(Number(customer.row.debt))}.`;
+  } else {
+    say += CART_WORDS[method] ? `, ${CART_WORDS[method]}.` : ".";
+  }
+  return { kind: "cart", id: Number(info.lastInsertRowid), total, say };
 }
 
 export function takeAgentCart() {
@@ -67,30 +111,90 @@ export function takeAgentCart() {
   db.exec("BEGIN");
   try {
     const rows = db
-      .prepare("SELECT id, items FROM agent_cart WHERE taken_at IS NULL AND created_at >= ? ORDER BY id")
-      .all(since) as Array<{ id: number; items: string }>;
+      .prepare("SELECT id, items, customer_id, payment FROM agent_cart WHERE taken_at IS NULL AND created_at >= ? ORDER BY id")
+      .all(since) as Array<{ id: number; items: string; customer_id: number | null; payment: string | null }>;
     const now = new Date().toISOString();
     for (const r of rows) db.prepare("UPDATE agent_cart SET taken_at = ? WHERE id = ?").run(now, r.id);
     db.exec("COMMIT");
-    return rows.flatMap((r) =>
-      (JSON.parse(r.items) as Array<{ product_id: number; qty: number }>).flatMap((i) => {
+    return rows.map((r) => ({
+      payment: r.payment || "naqd",
+      customer: r.customer_id
+        ? ((db.prepare("SELECT id, name, phone, debt FROM customers WHERE id = ?").get(r.customer_id) as SqlRow | undefined) ?? null)
+        : null,
+      lines: (JSON.parse(r.items) as Array<{ product_id: number; qty: number }>).flatMap((i) => {
         try {
           return [{ product: getProduct(i.product_id), qty: i.qty }];
         } catch {
           return [];
         }
       }),
-    );
+    }));
   } catch (e) {
     db.exec("ROLLBACK");
     throw e;
   }
 }
 
+// Without a supplier this is a plain stock count; with one it is a delivery, paid in full unless the
+// assistant passes what was actually paid, and the rest becomes what the shop owes that supplier.
 function stockIn(body: SqlRow) {
-  createStockIn({ userId: agentUserId(), note: AGENT_NOTE, items: lines(body.items) });
+  const items = lines(body.items);
+  const supplier = String(body.supplier || "").trim() ? party("suppliers", String(body.supplier), "Ta'minotchi") : null;
+  const total = items.reduce((s, l) => s + Math.round(l.qty * Math.round(l.buy_price ?? Number(getProduct(l.product_id).buy_price))), 0);
+  const paid = supplier ? Math.min(total, Math.max(0, body.paid === undefined || body.paid === null ? total : Number(body.paid))) : 0;
+  createStockIn({ userId: agentUserId(), supplierId: supplier ? Number(supplier.row.id) : null, paid, note: AGENT_NOTE, items });
   const s = getDb().prepare("SELECT id, number, total FROM stock_ins WHERE note = ? ORDER BY id DESC LIMIT 1").get(AGENT_NOTE) as SqlRow;
-  return { kind: "stock_in", id: Number(s.id), number: s.number, total: s.total };
+  const what = items.map((l) => { const p = getProduct(l.product_id); return `${p.name} ${l.qty} ${p.unit}`; }).join(", ");
+  let say = `Kirim yozildi: ${what}`;
+  if (supplier) {
+    say += `, ${supplier.row.name}dan, jami ${som(total)}.`;
+    if (supplier.created) say += " U yangi ta'minotchi sifatida qo'shildi.";
+    if (total - paid <= 0) say += " To'liq to'landi.";
+    else if (paid > 0) say += ` ${som(paid)} to'landi, ${som(total - paid)} qarz bo'ldi.`;
+    else say += ` Hammasi qarzga olindi, ${supplier.row.name}ga ${som(total)} qarzmiz.`;
+  } else {
+    say += ". Qoldiq ko'paydi.";
+  }
+  return { kind: "stock_in", id: Number(s.id), number: s.number, total: s.total, say };
+}
+
+function price(body: SqlRow) {
+  const p = getProduct(Number(body.product_id));
+  const next = Math.round(Number(body.sell_price));
+  if (!(next > 0)) fail("Yangi narxni ayting");
+  updateProduct(p.id, { sell_price: next });
+  return {
+    kind: "price",
+    id: p.id,
+    old: p.sell_price,
+    total: next,
+    say: `${p.name} narxi ${som(p.sell_price)} edi, endi ${som(next)}.`,
+  };
+}
+
+// The till announces each finished sale on the shop's computer; it asks for the sales after the last one it saw.
+export function tillEvents(after: number | null) {
+  const db = getDb();
+  const last = (db.prepare("SELECT COALESCE(MAX(id),0) AS id FROM sales").get() as { id: number }).id;
+  if (after === null || !Number.isFinite(after)) return { last, sales: [] };
+  const sales = db
+    .prepare(
+      `SELECT s.id, s.total, s.payment_method, c.name AS customer_name FROM sales s
+       LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id > ? ORDER BY s.id LIMIT 20`,
+    )
+    .all(after) as SqlRow[];
+  return {
+    last,
+    sales: sales.map((s) => ({
+      ...s,
+      low: db
+        .prepare(
+          `SELECT DISTINCT p.name, p.stock, p.unit FROM sale_items si JOIN products p ON p.id = si.product_id
+           WHERE si.sale_id = ? AND p.min_stock > 0 AND p.stock <= p.min_stock`,
+        )
+        .all(Number(s.id)),
+    })),
+  };
 }
 
 function expense(body: SqlRow) {
@@ -170,10 +274,16 @@ function undo(body: SqlRow) {
       return { kind: "expense", id };
     }
     case "stock_in": {
-      const s = db.prepare("SELECT id FROM stock_ins WHERE id = ? AND note = ?").get(id, AGENT_NOTE);
+      const s = db.prepare("SELECT id, supplier_id, total, paid FROM stock_ins WHERE id = ? AND note = ?").get(id, AGENT_NOTE) as
+        | SqlRow
+        | undefined;
       if (!s) fail("Bu kirimni Agent yozmagan", 403);
       db.exec("BEGIN");
       try {
+        const owed = Number(s.total) - Number(s.paid);
+        if (s.supplier_id && owed > 0) {
+          db.prepare("UPDATE suppliers SET payable = payable - ? WHERE id = ?").run(owed, Number(s.supplier_id));
+        }
         for (const it of db.prepare("SELECT product_id, qty FROM stock_in_items WHERE stock_in_id = ?").all(id) as SqlRow[]) {
           db.prepare("UPDATE products SET stock = stock - ? WHERE id = ?").run(Number(it.qty), Number(it.product_id));
         }
@@ -185,6 +295,12 @@ function undo(body: SqlRow) {
         throw e;
       }
       return { kind: "stock_in", id };
+    }
+    case "price": {
+      const old = Math.round(Number(body.old));
+      if (!(old > 0)) fail("Eski narx noma'lum");
+      updateProduct(getProduct(id).id, { sell_price: old });
+      return { kind: "price", id };
     }
     case "product": {
       const info = db
@@ -210,6 +326,8 @@ export function agentAction(body: SqlRow) {
       return saleReturn(body);
     case "product":
       return product(body);
+    case "price":
+      return price(body);
     case "undo":
       return undo(body);
     default:
