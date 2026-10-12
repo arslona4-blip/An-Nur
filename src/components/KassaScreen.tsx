@@ -50,6 +50,14 @@ function cashOptions(total: number) {
   return out.sort((a, b) => a - b).slice(0, 5);
 }
 
+function Kbd({ children }: { children: string }) {
+  return (
+    <kbd className="hidden rounded border border-current/30 px-1 font-sans text-[10px] font-semibold opacity-70 md:inline" data-latin>
+      {children}
+    </kbd>
+  );
+}
+
 const cartTotal = (lines: CartLine[]) => lines.reduce((s, l) => s + Math.round(l.qty * l.product.sell_price), 0);
 type Sale = {
   id: number;
@@ -314,6 +322,47 @@ export function KassaScreen() {
 
   const usdEnabled = settings.usd_enabled === "1";
   const usdRate = Number(settings.usd_rate || 12500);
+  const canCheckout = !busy && !(method === "qarz" && !customerId);
+
+  function openPay() {
+    if (!cart.length) return;
+    setMethod(presetMethod);
+    setPaid(presetMethod === "qarz" ? "0" : String(total));
+    setError("");
+    setPayOpen(true);
+  }
+
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  function onShortcut(e: KeyboardEvent) {
+    const modalOpen = payOpen || freeOpen || parkedOpen || !!qtyProduct || scanOpen || scaleOpen;
+    if (receipt && e.key === "Enter") {
+      e.preventDefault();
+      setReceipt(null);
+      searchRef.current?.focus();
+      return;
+    }
+    if (modalOpen || receipt) return;
+    if (e.key === "F2") {
+      e.preventDefault();
+      setFreeOpen(true);
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      parkSale();
+    } else if (e.key === "F9") {
+      e.preventDefault();
+      openPay();
+    }
+  }
+
+  useEffect(() => {
+    keys.current = onShortcut;
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function checkout() {
     setError("");
@@ -430,6 +479,7 @@ export function KassaScreen() {
           >
             <Plus size={18} />
             <span className="hidden sm:inline">Summa</span>
+            <Kbd>F2</Kbd>
           </button>
         </form>
         {!q && categoryId === 0 && top.length ? (
@@ -592,18 +642,11 @@ export function KassaScreen() {
             >
               <PauseCircle size={18} />
               Kutish
+              <Kbd>F4</Kbd>
             </Button>
-            <Button
-              className="h-12 flex-1 text-base"
-              disabled={!cart.length}
-              onClick={() => {
-                setMethod(presetMethod);
-                setPaid(presetMethod === "qarz" ? "0" : String(total));
-                setError("");
-                setPayOpen(true);
-              }}
-            >
+            <Button className="h-12 flex-1 text-base" disabled={!cart.length} onClick={openPay}>
               To‘lash
+              <Kbd>F9</Kbd>
             </Button>
           </div>
         </div>
@@ -728,10 +771,17 @@ export function KassaScreen() {
             <span className="num">{dualPrice(total, usdRate, usdEnabled)}</span>
           </div>
           <Input
+            autoFocus
             type="number"
             step={method === "usd" ? "0.01" : "1"}
             value={paid}
             onChange={(e) => setPaid(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canCheckout) {
+                e.preventDefault();
+                checkout();
+              }
+            }}
             placeholder={
               method === "qarz" ? "Hozir to'lanadigan" : method === "usd" ? "USD miqdori" : "Qabul qilingan pul"
             }
@@ -774,8 +824,9 @@ export function KassaScreen() {
             </div>
           ) : null}
           {error ? <div className="text-sm text-danger">{error}</div> : null}
-          <Button className="w-full" disabled={busy || (method === "qarz" && !customerId)} onClick={checkout}>
+          <Button className="h-12 w-full text-base" disabled={!canCheckout} onClick={checkout}>
             {busy ? "Saqlanmoqda..." : "Chek chiqarish"}
+            {busy ? null : <Kbd>Enter</Kbd>}
           </Button>
         </div>
       </Modal>

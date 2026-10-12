@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { SessionUser } from "@/lib/auth";
+import { DisplayToggles } from "@/components/DisplayPrefs";
 import { PRODUCT_LOGO, PRODUCT_NAME } from "@/lib/brand";
 
 const NAV = [
@@ -124,6 +125,9 @@ export function Shell({
           {renderNavLinks(true)}
         </nav>
         <div className="border-t border-white/10 p-3 lg:p-4">
+          <div className="mb-3">
+            <DisplayToggles dark />
+          </div>
           <div className="mb-3 hidden text-sm lg:block">
             <div className="font-semibold">{user.name}</div>
             <div className="text-xs text-white/50">{user.role === "admin" ? "Administrator" : "Kassir"}</div>
@@ -203,6 +207,9 @@ export function Shell({
               {renderNavLinks()}
             </nav>
             <div className="border-t border-white/10 p-4 text-sm">
+              <div className="mb-3">
+                <DisplayToggles dark />
+              </div>
               <div className="font-semibold">{user.name}</div>
               <div className="text-xs text-white/50">{user.role === "admin" ? "Administrator" : "Kassir"}</div>
             </div>

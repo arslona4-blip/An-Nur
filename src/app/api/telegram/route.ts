@@ -3,10 +3,12 @@ import { productPrefix } from "@/lib/brand";
 import { jsonError, requireAdmin } from "@/lib/auth";
 import { buildAlertMessage, sendTelegram, sendTelegramAlertsIfEnabled } from "@/lib/phase2";
 import { deleteTelegramWebhook, setTelegramWebhook } from "@/lib/telegram-bot";
+import { dailySummaryText, sendDailySummary } from "@/lib/daily";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await requireAdmin();
+    if (new URL(req.url).searchParams.get("daily")) return NextResponse.json({ preview: dailySummaryText() });
     return NextResponse.json({ preview: buildAlertMessage() });
   } catch (e) {
     return jsonError(e);
@@ -19,6 +21,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (body.action === "test") {
       await sendTelegram(body.text || `${productPrefix("test xabari")} ✓`);
+      return NextResponse.json({ ok: true });
+    }
+    if (body.action === "daily") {
+      await sendDailySummary();
       return NextResponse.json({ ok: true });
     }
     if (body.action === "alerts") {

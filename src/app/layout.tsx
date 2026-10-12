@@ -3,11 +3,12 @@ import { IBM_Plex_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { SwRegister } from "@/components/SwRegister";
 import { SplashScreen } from "@/components/SplashScreen";
+import { DisplayPrefsEffect } from "@/components/DisplayPrefs";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME, productTitle } from "@/lib/brand";
 
 const manrope = Manrope({
   variable: "--font-manrope",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic", "cyrillic-ext"],
 });
 
 const plex = IBM_Plex_Mono({
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full min-h-dvh font-sans">
         <SplashScreen />
         <SwRegister />
+        <DisplayPrefsEffect />
         {children}
       </body>
     </html>

@@ -56,7 +56,7 @@ export function migratePhase5(db: DatabaseSync) {
   );
 }
 
-function openaiKey() {
+export function openaiKey() {
   const fromEnv = process.env.OPENAI_API_KEY?.trim();
   if (fromEnv) return fromEnv;
   return getSettings().openai_api_key?.trim() || "";
@@ -72,7 +72,7 @@ export type RecognizedProduct = {
   source_image_url?: string;
 };
 
-function parseUzsPrice(raw: unknown): number {
+export function parseUzsPrice(raw: unknown): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(0, Math.round(raw));
   const s = String(raw ?? "")
     .toLowerCase()
@@ -160,7 +160,7 @@ type AiProduct = {
   box?: unknown;
 };
 
-async function callVisionJson(opts: {
+export async function callVisionJson(opts: {
   key: string;
   mime: string;
   b64: string;

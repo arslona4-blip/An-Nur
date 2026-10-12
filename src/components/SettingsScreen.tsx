@@ -18,6 +18,8 @@ export function SettingsScreen() {
     telegram_bot_token: "",
     telegram_chat_id: "",
     telegram_alerts_enabled: "0",
+    daily_summary_enabled: "1",
+    daily_summary_hour: "21",
     usd_enabled: "0",
     usd_rate: "12500",
     printer_width: "58",
@@ -55,6 +57,8 @@ export function SettingsScreen() {
         telegram_bot_token: d.settings.telegram_bot_token || "",
         telegram_chat_id: d.settings.telegram_chat_id || "",
         telegram_alerts_enabled: d.settings.telegram_alerts_enabled || "0",
+        daily_summary_enabled: d.settings.daily_summary_enabled || "1",
+        daily_summary_hour: d.settings.daily_summary_hour || "21",
         usd_enabled: d.settings.usd_enabled || "0",
         usd_rate: d.settings.usd_rate || "12500",
         printer_width: d.settings.printer_width || "58",
@@ -108,6 +112,11 @@ export function SettingsScreen() {
   async function testTelegram() {
     await api("/api/telegram", { method: "POST", body: JSON.stringify({ action: "test" }) });
     setMsg("Telegram test xabari yuborildi");
+  }
+
+  async function sendDaily() {
+    await api("/api/telegram", { method: "POST", body: JSON.stringify({ action: "daily" }) });
+    setMsg("Kun yakuni Telegram'ga yuborildi");
   }
 
   async function sendAlerts() {
@@ -356,12 +365,36 @@ export function SettingsScreen() {
           />
           Telegram ogohlantirish yoqilgan
         </label>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.daily_summary_enabled !== "0"}
+              onChange={(e) => setForm({ ...form, daily_summary_enabled: e.target.checked ? "1" : "0" })}
+            />
+            Har kuni kechqurun kun yakunini yuborish, soat
+          </label>
+          <select
+            className="rounded-lg border border-line bg-white px-2 py-1"
+            value={form.daily_summary_hour}
+            onChange={(e) => setForm({ ...form, daily_summary_hour: e.target.value })}
+          >
+            {[18, 19, 20, 21, 22, 23].map((h) => (
+              <option key={h} value={String(h)}>
+                {h}:00
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => save().then(() => testTelegram()).catch((e) => setMsg(e.message))}>
             Test xabar
           </Button>
           <Button variant="ghost" onClick={() => sendAlerts().catch((e) => setMsg(e.message))}>
             Ogohlantirish yuborish
+          </Button>
+          <Button variant="ghost" onClick={() => save().then(() => sendDaily()).catch((e) => setMsg(e.message))}>
+            Kun yakunini hozir yuborish
           </Button>
         </div>
       </Card>

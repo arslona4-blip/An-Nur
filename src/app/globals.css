@@ -47,6 +47,18 @@ button {
   font-size: 16px;
 }
 
+/* "Katta yozuv": every rem-based size and spacing grows with the root font size. */
+html.big-text {
+  font-size: 118%;
+}
+
+html.big-text input,
+html.big-text select,
+html.big-text textarea,
+html.big-text button {
+  font-size: 19px;
+}
+
 .num {
   font-family: var(--font-plex), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;

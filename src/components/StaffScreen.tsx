@@ -80,7 +80,7 @@ export function StaffScreen({ weakPassword = false }: { weakPassword?: boolean }
             <div>
               <div className="font-semibold">{u.name}</div>
               <div className="text-xs text-muted">
-                {u.username} · {u.role === "admin" ? "Administrator" : "Kassir"}
+                <span data-latin>{u.username}</span> · {u.role === "admin" ? "Administrator" : "Kassir"}
               </div>
             </div>
             <div className="flex gap-2">
