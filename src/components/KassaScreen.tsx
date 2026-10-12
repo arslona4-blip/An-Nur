@@ -85,6 +85,22 @@ export function KassaScreen() {
     searchRef.current?.focus();
   }, []);
 
+  // Stock also changes from other tills, the delivery bot and the voice assistant.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.hidden) return;
+      api<{ products: Product[] }>(`/api/products?q=${encodeURIComponent(q)}`)
+        .then((p) => setProducts(p.products))
+        .catch(() => {});
+    };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [q]);
+
   const filtered = useMemo(() => {
     return products.filter((p) => !categoryId || p.category_id === categoryId);
   }, [products, categoryId]);
