@@ -55,6 +55,12 @@ export function migratePhase3(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_delivery_status ON delivery_orders(status);
     CREATE INDEX IF NOT EXISTS idx_delivery_created ON delivery_orders(created_at);
+    CREATE TABLE IF NOT EXISTS agent_cart (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      items TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      taken_at TEXT
+    );
   `);
 
   const saleCols = [

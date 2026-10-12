@@ -101,6 +101,23 @@ export function KassaScreen() {
     };
   }, [q]);
 
+  // What the shop's voice assistant heard as sold lands here, ready for the cashier to take payment.
+  useEffect(() => {
+    let busy = false;
+    const take = () => {
+      if (document.hidden || busy) return;
+      busy = true;
+      api<{ lines: CartLine[] }>("/api/agent-cart", { method: "POST" })
+        .then((d) => d.lines.forEach((l) => addProduct(l.product, l.qty)))
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const timer = setInterval(take, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
   const filtered = useMemo(() => {
     return products.filter((p) => !categoryId || p.category_id === categoryId);
   }, [products, categoryId]);

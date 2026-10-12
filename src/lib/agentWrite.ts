@@ -1,11 +1,10 @@
-import { addPayment, createCustomer, createProduct, createSale, createStockIn, getDb, getSale } from "./db";
+import { addPayment, createProduct, createStockIn, getDb, getProduct, getSale } from "./db";
+import { som } from "./format";
 import { createReturn, findSaleByNumber } from "./phase1";
 
 // The shop's voice assistant records what happened at the counter. Every record it makes carries this note,
 // and "undo" only ever touches records that carry it.
 const AGENT_NOTE = "Agent (ovoz)";
-const PAYMENTS: Record<string, string> = { naqd: "naqd", karta: "uzcard", uzcard: "uzcard", humo: "humo", otkazma: "otkazma", nasiya: "qarz", qarz: "qarz" };
-
 type Line = { product_id: number; qty: number; buy_price?: number; sell_price?: number };
 type SqlRow = Record<string, unknown>;
 
@@ -43,28 +42,49 @@ function lines(items: unknown): Line[] {
   }));
 }
 
-function customerId(name: string) {
-  const clean = name.trim();
-  if (!clean) fail("Nasiyaga sotish uchun mijoz ismi kerak");
-  const found = getDb().prepare("SELECT id FROM customers WHERE LOWER(name) = LOWER(?)").get(clean) as
-    | { id: number }
-    | undefined;
-  return found?.id ?? Number(createCustomer({ name: clean })?.id);
+// A spoken sale goes into the till's cart; the cashier takes the payment there as with any other sale.
+// Lines nobody picked up within this window are dropped rather than appearing in a later customer's cart.
+const CART_TTL_MS = 10 * 60 * 1000;
+
+function cart(body: SqlRow) {
+  const items = lines(body.items).map((l) => {
+    const p = getProduct(l.product_id) as SqlRow;
+    if (!Number(p.active)) fail(`${p.name} sotuvda yo'q`);
+    if (!(l.qty > 0)) fail("Miqdor noto'g'ri");
+    return { product_id: l.product_id, qty: l.qty, name: String(p.name), unit: String(p.unit), price: Number(p.sell_price) };
+  });
+  const info = getDb()
+    .prepare("INSERT INTO agent_cart (items, created_at) VALUES (?, ?)")
+    .run(JSON.stringify(items.map(({ product_id, qty }) => ({ product_id, qty }))), new Date().toISOString());
+  const total = Math.round(items.reduce((s, i) => s + i.price * i.qty, 0));
+  const what = items.map((i) => `${i.name} ${i.qty} ${i.unit}`).join(", ");
+  return { kind: "cart", id: Number(info.lastInsertRowid), total, say: `Savatchaga qo'shdim: ${what}, ${som(total)}.` };
 }
 
-function sale(body: SqlRow) {
-  const method = PAYMENTS[String(body.payment || "naqd").toLowerCase()];
-  if (!method) fail("To'lov turi noto'g'ri");
-  const s = createSale({
-    userId: agentUserId(),
-    customerId: method === "qarz" ? customerId(String(body.customer || "")) : null,
-    paymentMethod: method,
-    paid: method === "qarz" ? 0 : undefined,
-    note: AGENT_NOTE,
-    clientId: body.client_id ? `agent-${String(body.client_id)}` : null,
-    items: lines(body.items).map((l) => ({ product_id: l.product_id, qty: l.qty })),
-  }) as SqlRow;
-  return { kind: "sale", id: Number(s.id), number: s.number, total: s.total, payment: method };
+export function takeAgentCart() {
+  const db = getDb();
+  const since = new Date(Date.now() - CART_TTL_MS).toISOString();
+  db.exec("BEGIN");
+  try {
+    const rows = db
+      .prepare("SELECT id, items FROM agent_cart WHERE taken_at IS NULL AND created_at >= ? ORDER BY id")
+      .all(since) as Array<{ id: number; items: string }>;
+    const now = new Date().toISOString();
+    for (const r of rows) db.prepare("UPDATE agent_cart SET taken_at = ? WHERE id = ?").run(now, r.id);
+    db.exec("COMMIT");
+    return rows.flatMap((r) =>
+      (JSON.parse(r.items) as Array<{ product_id: number; qty: number }>).flatMap((i) => {
+        try {
+          return [{ product: getProduct(i.product_id), qty: i.qty }];
+        } catch {
+          return [];
+        }
+      }),
+    );
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 
 function stockIn(body: SqlRow) {
@@ -128,6 +148,11 @@ function undo(body: SqlRow) {
   const id = Number(body.id);
   const db = getDb();
   switch (body.kind) {
+    case "cart": {
+      const info = db.prepare("DELETE FROM agent_cart WHERE id = ? AND taken_at IS NULL").run(id);
+      if (!info.changes) fail("Mahsulot savatchaga tushib bo'lgan, uni kassada savatchadan o'chiring");
+      return { kind: "cart", id };
+    }
     case "sale": {
       const s = getSale(id) as SqlRow;
       if (s.note !== AGENT_NOTE) fail("Bu savdoni Agent yozmagan", 403);
@@ -176,7 +201,7 @@ function undo(body: SqlRow) {
 export function agentAction(body: SqlRow) {
   switch (body?.action) {
     case "sale":
-      return sale(body);
+      return cart(body);
     case "stock_in":
       return stockIn(body);
     case "expense":
