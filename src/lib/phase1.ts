@@ -202,7 +202,7 @@ export function createReturn(input: {
     let total = 0;
     const lines: Array<{
       sale_item_id: number;
-      product_id: number;
+      product_id: number | null;
       name: string;
       unit: string;
       qty: number;
@@ -222,7 +222,7 @@ export function createReturn(input: {
       total += lineTotal;
       lines.push({
         sale_item_id: item.sale_item_id,
-        product_id: Number(si.product_id),
+        product_id: si.product_id == null ? null : Number(si.product_id),
         name: String(si.name),
         unit: String(si.unit),
         qty: item.qty,
@@ -256,7 +256,7 @@ export function createReturn(input: {
     const stockStmt = db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
     for (const line of lines) {
       itemStmt.run(returnId, line.sale_item_id, line.product_id, line.name, line.unit, line.qty, line.sell_price, line.total);
-      stockStmt.run(line.qty, line.product_id);
+      if (line.product_id !== null) stockStmt.run(line.qty, line.product_id);
     }
     if (String((sale as SqlRow).payment_method) === "qarz" && (sale as SqlRow).customer_id && input.refundMethod === "qarz") {
       const debtReduce = Math.min(total, Number((sale as SqlRow).debt_amount || 0));

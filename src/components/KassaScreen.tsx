@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Scale, ScanLine, Search, Trash2 } from "lucide-react";
+import { PauseCircle, Plus, Scale, ScanLine, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { FiscalQr } from "@/components/FiscalQr";
@@ -24,6 +24,33 @@ type Product = {
 type Category = { id: number; name: string; color: string };
 type Customer = { id: number; name: string; phone: string | null; debt: number };
 type CartLine = { product: Product; qty: number };
+type ParkedSale = { id: string; at: string; cart: CartLine[]; customerId: number; discount: number; method: string };
+
+const PARKED_KEY = "annur-parked-sales";
+const BILLS = [5000, 10000, 20000, 50000, 100000, 200000];
+
+// Free-amount lines have no catalog product; a negative id keeps them apart in the cart.
+const isFree = (p: Product) => p.id < 0;
+
+function readParked(): ParkedSale[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(PARKED_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function cashOptions(total: number) {
+  const out = [total];
+  for (const bill of BILLS) {
+    const rounded = Math.ceil(total / bill) * bill;
+    if (rounded > total && !out.includes(rounded)) out.push(rounded);
+  }
+  return out.sort((a, b) => a - b).slice(0, 5);
+}
+
+const cartTotal = (lines: CartLine[]) => lines.reduce((s, l) => s + Math.round(l.qty * l.product.sell_price), 0);
 type Sale = {
   id: number;
   number: string;
@@ -65,8 +92,81 @@ export function KassaScreen() {
   const [autoDiscount, setAutoDiscount] = useState(0);
   const [appliedRules, setAppliedRules] = useState<string[]>([]);
   const [itemDiscounts, setItemDiscounts] = useState<Record<number, number>>({});
+  const [top, setTop] = useState<Product[]>([]);
+  const [freeOpen, setFreeOpen] = useState(false);
+  const [freeAmount, setFreeAmount] = useState("");
+  const [freeName, setFreeName] = useState("");
+  const [parked, setParked] = useState<ParkedSale[]>([]);
+  const [parkedOpen, setParkedOpen] = useState(false);
+
+  useEffect(() => {
+    setParked(readParked());
+  }, []);
+
+  function saveParked(list: ParkedSale[]) {
+    setParked(list);
+    localStorage.setItem(PARKED_KEY, JSON.stringify(list));
+  }
+
+  function resetSale() {
+    setCart([]);
+    setDiscount(0);
+    setCustomerId(0);
+    setPresetMethod("naqd");
+  }
+
+  function currentAsParked(): ParkedSale {
+    return {
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      at: new Date().toISOString(),
+      cart,
+      customerId,
+      discount,
+      method: presetMethod,
+    };
+  }
+
+  function parkSale() {
+    if (!cart.length) return;
+    saveParked([...readParked(), currentAsParked()]);
+    resetSale();
+    searchRef.current?.focus();
+  }
+
+  function resumeSale(sale: ParkedSale) {
+    const rest = readParked().filter((s) => s.id !== sale.id);
+    saveParked(cart.length ? [...rest, currentAsParked()] : rest);
+    setCart(sale.cart);
+    setCustomerId(sale.customerId);
+    setDiscount(sale.discount);
+    setPresetMethod(sale.method);
+    setParkedOpen(false);
+  }
+
+  function addFree() {
+    const amount = Math.round(Number(freeAmount));
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const product: Product = {
+      id: -Date.now(),
+      name: freeName.trim() || "Boshqa mahsulot",
+      barcode: null,
+      category_id: null,
+      category_name: null,
+      unit: "dona",
+      sell_price: amount,
+      stock: 0,
+    };
+    setCart((prev) => [...prev, { product, qty: 1 }]);
+    setFreeOpen(false);
+    setFreeAmount("");
+    setFreeName("");
+    searchRef.current?.focus();
+  }
 
   async function load(search = q) {
+    api<{ products: Product[] }>("/api/products?top=12")
+      .then((t) => setTop(t.products))
+      .catch(() => {});
     const [p, c, cust, s, sh] = await Promise.all([
       api<{ products: Product[] }>(`/api/products?q=${encodeURIComponent(search)}`),
       api<{ categories: Category[] }>("/api/categories"),
@@ -172,11 +272,12 @@ export function KassaScreen() {
     addProduct(p, 1);
   }
 
-  const subtotal = cart.reduce((s, l) => s + Math.round(l.qty * l.product.sell_price), 0);
+  const subtotal = cartTotal(cart);
   const lineDiscountTotal = cart.reduce((s, l) => s + (itemDiscounts[l.product.id] || 0), 0);
   const total = Math.max(0, subtotal - Math.round(discount || 0) - autoDiscount - lineDiscountTotal);
 
-  const refreshDiscounts = useCallback(async (lines: CartLine[]) => {
+  const refreshDiscounts = useCallback(async (all: CartLine[]) => {
+    const lines = all.filter((l) => !isFree(l.product));
     if (!lines.length) {
       setAutoDiscount(0);
       setItemDiscounts({});
@@ -225,11 +326,11 @@ export function KassaScreen() {
       discount: Math.round(Number(discount || 0) + autoDiscount),
       paid: method === "usd" ? Math.round(paidNum * usdRate) : paidNum,
       foreignPaid: method === "usd" ? paidNum : undefined,
-      items: cart.map((l) => ({
-        product_id: l.product.id,
-        qty: l.qty,
-        discount: itemDiscounts[l.product.id] || 0,
-      })),
+      items: cart.map((l) =>
+        isFree(l.product)
+          ? { product_id: null, qty: l.qty, price: l.product.sell_price, name: l.product.name }
+          : { product_id: l.product.id, qty: l.qty, discount: itemDiscounts[l.product.id] || 0 },
+      ),
     };
     try {
       const data = await api<{ sale: Sale }>("/api/sales", {
@@ -321,7 +422,33 @@ export function KassaScreen() {
           >
             <Scale size={20} />
           </button>
+          <button
+            type="button"
+            onClick={() => setFreeOpen(true)}
+            className="flex h-12 shrink-0 items-center gap-1 rounded-xl border border-line bg-white px-3 text-sm font-semibold text-brand"
+            title="Ro'yxatda yo'q mahsulotni summa bilan sotish"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Summa</span>
+          </button>
         </form>
+        {!q && categoryId === 0 && top.length ? (
+          <div className="mt-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Ko‘p sotiladiganlar</div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+              {top.map((p, i) => (
+                <button
+                  key={p.id}
+                  onClick={() => clickProduct(p)}
+                  className={`min-h-16 rounded-2xl bg-brand px-2 py-2 text-left text-white shadow-sm active:scale-[0.98] ${i >= 6 ? "hidden sm:block" : ""}`}
+                >
+                  <div className="line-clamp-2 text-sm font-bold leading-tight">{p.name}</div>
+                  <div className="mt-1 text-xs text-white/80 num">{som(p.sell_price)}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           <button
             onClick={() => setCategoryId(0)}
@@ -361,7 +488,17 @@ export function KassaScreen() {
 
       <aside className="flex max-h-[46%] w-full shrink-0 flex-col border-t border-line bg-white md:max-h-none md:w-[380px] md:border-l md:border-t-0">
         <div className="border-b border-line p-4">
-          <div className="text-sm font-semibold">Savatcha</div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Savatcha</div>
+            {parked.length ? (
+              <button
+                onClick={() => setParkedOpen(true)}
+                className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900"
+              >
+                Kutayotgan savdolar: {parked.length}
+              </button>
+            ) : null}
+          </div>
           <Select value={customerId} onChange={(e) => setCustomerId(Number(e.target.value))}>
             <option value={0}>Mijoz tanlanmagan</option>
             {customers.map((c) => (
@@ -445,18 +582,30 @@ export function KassaScreen() {
             <span>To‘lov</span>
             <span className="num text-brand">{som(total)}</span>
           </div>
-          <Button
-            className="h-12 w-full text-base"
-            disabled={!cart.length}
-            onClick={() => {
-              setMethod(presetMethod);
-              setPaid(presetMethod === "qarz" ? "0" : String(total));
-              setError("");
-              setPayOpen(true);
-            }}
-          >
-            To‘lash
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="h-12 shrink-0 px-3"
+              disabled={!cart.length}
+              onClick={parkSale}
+              title="Savatchani saqlab, keyingi mijozga o'tish"
+            >
+              <PauseCircle size={18} />
+              Kutish
+            </Button>
+            <Button
+              className="h-12 flex-1 text-base"
+              disabled={!cart.length}
+              onClick={() => {
+                setMethod(presetMethod);
+                setPaid(presetMethod === "qarz" ? "0" : String(total));
+                setError("");
+                setPayOpen(true);
+              }}
+            >
+              To‘lash
+            </Button>
+          </div>
         </div>
       </aside>
       </div>
@@ -484,6 +633,66 @@ export function KassaScreen() {
               Qo'shish
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal open={freeOpen} title="Summa bilan sotish" onClose={() => setFreeOpen(false)}>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addFree();
+          }}
+        >
+          <Input
+            autoFocus
+            type="number"
+            inputMode="numeric"
+            min="1"
+            value={freeAmount}
+            onChange={(e) => setFreeAmount(e.target.value)}
+            placeholder="Summa, masalan 5000"
+            className="h-14 text-2xl font-bold"
+          />
+          <Input value={freeName} onChange={(e) => setFreeName(e.target.value)} placeholder="Nomi (shart emas)" />
+          <p className="text-xs text-muted">Ro‘yxatda yo‘q mahsulot uchun. Ombor qoldig‘i o‘zgarmaydi.</p>
+          <Button type="submit" className="h-12 w-full text-base" disabled={!(Number(freeAmount) > 0)}>
+            Savatchaga qo‘shish
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal open={parkedOpen} title="Kutayotgan savdolar" onClose={() => setParkedOpen(false)}>
+        <div className="space-y-2">
+          {parked.length === 0 ? <div className="text-sm text-muted">Kutayotgan savdo yo‘q</div> : null}
+          {parked.map((s) => {
+            const who = customers.find((c) => c.id === s.customerId)?.name;
+            return (
+              <div key={s.id} className="flex items-center gap-2 rounded-xl border border-line p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold num">{som(Math.max(0, cartTotal(s.cart) - s.discount))}</div>
+                  <div className="truncate text-xs text-muted">
+                    {new Date(s.at).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })} ·{" "}
+                    {s.cart.length} xil mahsulot{who ? ` · ${who}` : ""}
+                  </div>
+                  <div className="truncate text-xs text-muted">{s.cart.map((l) => l.product.name).join(", ")}</div>
+                </div>
+                <Button className="shrink-0" onClick={() => resumeSale(s)}>
+                  Davom etish
+                </Button>
+                <button
+                  aria-label="O‘chirish"
+                  className="p-1 text-muted"
+                  onClick={() => saveParked(readParked().filter((x) => x.id !== s.id))}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            );
+          })}
+          {cart.length ? (
+            <p className="text-xs text-muted">Hozirgi savatcha ham kutishga o‘tkaziladi.</p>
+          ) : null}
         </div>
       </Modal>
 
@@ -528,9 +737,36 @@ export function KassaScreen() {
             }
           />
           {method === "naqd" ? (
-            <div className="text-sm text-muted">
-              Qaytim: <b className="num text-ink">{som(Math.max(0, Number(paid || 0) - total))}</b>
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {cashOptions(total).map((v, i) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setPaid(String(v))}
+                    className={`rounded-xl border px-2 py-3 text-sm font-bold num ${
+                      Number(paid) === v ? "border-brand bg-brand text-white" : "border-line bg-white"
+                    }`}
+                  >
+                    {i === 0 ? "Aniq summa" : som(v)}
+                  </button>
+                ))}
+              </div>
+              <div
+                className={`rounded-xl px-4 py-3 text-center ${
+                  Number(paid || 0) < total ? "bg-red-50 text-danger" : "bg-emerald-50 text-ok"
+                }`}
+              >
+                {Number(paid || 0) < total ? (
+                  <div className="text-lg font-bold">Yetmaydi: {som(total - Number(paid || 0))}</div>
+                ) : (
+                  <>
+                    <div className="text-xs font-semibold uppercase tracking-wide">Qaytim</div>
+                    <div className="text-3xl font-extrabold num">{som(Number(paid || 0) - total)}</div>
+                  </>
+                )}
+              </div>
+            </>
           ) : null}
           {method === "usd" ? (
             <div className="text-sm text-muted">

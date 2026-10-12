@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin, requireUser } from "@/lib/auth";
-import { createProduct, listProducts, updateProduct } from "@/lib/db";
+import { createProduct, listProducts, topSellingProducts, updateProduct } from "@/lib/db";
 
 export async function GET(req: Request) {
   try {
     await requireUser();
     const url = new URL(req.url);
+    if (url.searchParams.get("top")) {
+      return NextResponse.json({ products: topSellingProducts(Number(url.searchParams.get("top")) || 12) });
+    }
     const q = url.searchParams.get("q") || undefined;
     const categoryId = url.searchParams.get("categoryId");
     const includeInactive = url.searchParams.get("all") === "1";

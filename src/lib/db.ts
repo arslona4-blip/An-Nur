@@ -571,6 +571,22 @@ export function listProducts(opts?: { q?: string; categoryId?: number; includeIn
   return rows<Product>(getDb().prepare(sql).all(...params));
 }
 
+export function topSellingProducts(limit = 12) {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  return rows<Product>(
+    getDb()
+      .prepare(
+        `SELECT p.*, c.name AS category_name
+         FROM sale_items si JOIN sales s ON s.id = si.sale_id
+         JOIN products p ON p.id = si.product_id
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE s.created_at >= ? AND p.active = 1
+         GROUP BY p.id ORDER BY COUNT(*) DESC, p.name LIMIT ?`,
+      )
+      .all(since, Math.max(1, Math.min(24, limit))),
+  );
+}
+
 export function createProduct(input: {
   name: string;
   barcode?: string;
@@ -704,7 +720,17 @@ export function updateSupplier(id: number, patch: { name?: string; phone?: strin
   return row<Party>(getDb().prepare("SELECT * FROM suppliers WHERE id = ?").get(id));
 }
 
-export type CartItem = { product_id: number; qty: number; discount?: number };
+// A line without product_id is a free-amount sale ("Boshqa mahsulot"): no stock, the cashier sets the price.
+export type CartItem = { product_id?: number | null; qty: number; discount?: number; price?: number; name?: string };
+
+type SaleLineProduct = Pick<Product, "name" | "unit" | "buy_price" | "sell_price"> & { id: number | null };
+
+function freeLineProduct(item: CartItem): SaleLineProduct {
+  const price = Math.round(Number(item.price));
+  if (!Number.isFinite(price) || price <= 0) throw new Error("Erkin summa noto'g'ri");
+  const name = String(item.name || "").trim().slice(0, 80) || "Boshqa mahsulot";
+  return { id: null, name, unit: "dona", buy_price: 0, sell_price: price };
+}
 
 export function createSale(input: {
   userId: number;
@@ -736,21 +762,29 @@ export function createSale(input: {
   db.exec("BEGIN");
   try {
     const ruleDiscounts = previewDiscounts(
-      input.items.map((item) => ({ product_id: item.product_id, qty: Number(item.qty) })),
+      input.items
+        .filter((item) => item.product_id)
+        .map((item) => ({ product_id: Number(item.product_id), qty: Number(item.qty) })),
     ).itemDiscounts;
     const used = new Map<number, number>();
     const lines = input.items.map((item) => {
-      const p = getProduct(item.product_id);
       const qty = Number(item.qty);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error("Miqdor noto'g'ri");
-      if (!p.active && !offline) throw new Error(`${p.name}: sotuvdan olingan`);
-      if (!allowNeg && p.stock + 1e-9 < qty) {
-        throw new Error(`${p.name}: omborda yetarli emas (${p.stock} ${p.unit})`);
+      if (!item.product_id) {
+        const p = freeLineProduct(item);
+        const total = Math.round(qty * p.sell_price);
+        return { p, qty, discount: 0, total };
       }
+      const product = getProduct(Number(item.product_id));
+      if (!product.active && !offline) throw new Error(`${product.name}: sotuvdan olingan`);
+      if (!allowNeg && product.stock + 1e-9 < qty) {
+        throw new Error(`${product.name}: omborda yetarli emas (${product.stock} ${product.unit})`);
+      }
+      const p: SaleLineProduct = product;
       const gross = Math.round(qty * p.sell_price);
-      const left = Math.max(0, (ruleDiscounts[p.id] || 0) - (used.get(p.id) || 0));
+      const left = Math.max(0, (ruleDiscounts[product.id] || 0) - (used.get(product.id) || 0));
       const discount = Math.min(gross, left);
-      used.set(p.id, (used.get(p.id) || 0) + discount);
+      used.set(product.id, (used.get(product.id) || 0) + discount);
       return { p, qty, discount, total: gross - discount };
     });
     const subtotal = lines.reduce((s, l) => s + Math.round(l.qty * l.p.sell_price), 0);
@@ -836,7 +870,7 @@ export function createSale(input: {
         line.discount,
         line.total,
       );
-      stockStmt.run(line.qty, line.p.id);
+      if (line.p.id !== null) stockStmt.run(line.qty, line.p.id);
     }
     if (debt > 0 && input.customerId) {
       db.prepare("UPDATE customers SET debt = debt + ? WHERE id = ?").run(debt, input.customerId);

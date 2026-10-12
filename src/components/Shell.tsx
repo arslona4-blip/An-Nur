@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  BookOpen,
   Building2,
   CalendarClock,
   Clock,
@@ -32,6 +33,7 @@ import { PRODUCT_LOGO, PRODUCT_NAME } from "@/lib/brand";
 const NAV = [
   { href: "/", label: "Bosh sahifa", icon: LayoutDashboard, roles: ["admin", "kassir"] },
   { href: "/kassa", label: "Kassa", icon: ShoppingCart, roles: ["admin", "kassir"] },
+  { href: "/qarzlar", label: "Qarz daftari", icon: BookOpen, roles: ["admin", "kassir"] },
   { href: "/smena", label: "Smena", icon: Clock, roles: ["admin", "kassir"] },
   { href: "/qaytarish", label: "Qaytarish", icon: RotateCcw, roles: ["admin", "kassir"] },
   { href: "/muddat", label: "Muddati yaqin", icon: CalendarClock, roles: ["admin", "kassir"] },
