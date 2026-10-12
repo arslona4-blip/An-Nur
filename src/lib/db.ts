@@ -17,6 +17,7 @@ import { migratePhase3 } from "./phase3";
 import { buildFiscalQr, getCurrentBranchId, migratePhase4 } from "./phase4";
 import { assertLicensed } from "./license";
 import { migratePhase5 } from "./phase5";
+import { isBundle, migratePhase6, moveStock, refreshBundle } from "./phase6";
 
 type SqlRow = Record<string, unknown>;
 
@@ -40,6 +41,7 @@ export function getDb() {
     migratePhase3(db);
     migratePhase4(db);
     migratePhase5(db);
+    migratePhase6(db);
     globalForDb.hisobDb = db;
   }
   ensureFoodCatalog(globalForDb.hisobDb);
@@ -48,6 +50,7 @@ export function getDb() {
   migratePhase3(globalForDb.hisobDb);
   migratePhase4(globalForDb.hisobDb);
   migratePhase5(globalForDb.hisobDb);
+  migratePhase6(globalForDb.hisobDb);
   return globalForDb.hisobDb;
 }
 
@@ -270,6 +273,7 @@ const STORE_DATA_TABLES = [
   "sms_log",
   "offline_queue",
   "telegram_sessions",
+  "bundle_items",
   "products",
   "customers",
   "suppliers",
@@ -433,6 +437,8 @@ export type UserRow = {
   created_at: string;
   password_hash?: string;
   must_change_password?: number;
+  commission_pct?: number;
+  commission_base?: string;
 };
 
 export function findUserByUsername(username: string) {
@@ -451,7 +457,9 @@ export function verifyLogin(username: string, password: string) {
 
 export function listUsers() {
   return rows<UserRow>(
-    getDb().prepare("SELECT id, username, name, role, active, created_at FROM users ORDER BY id").all(),
+    getDb()
+      .prepare("SELECT id, username, name, role, active, created_at, commission_pct, commission_base FROM users ORDER BY id")
+      .all(),
   );
 }
 
@@ -478,7 +486,14 @@ export function createUser(input: {
 
 export function updateUser(
   id: number,
-  patch: { name?: string; role?: "admin" | "kassir"; active?: boolean; password?: string },
+  patch: {
+    name?: string;
+    role?: "admin" | "kassir";
+    active?: boolean;
+    password?: string;
+    commissionPct?: number;
+    commissionBase?: "savdo" | "foyda";
+  },
 ) {
   const user = row<UserRow>(getDb().prepare("SELECT * FROM users WHERE id = ?").get(id));
   if (!user) throw new Error("Xodim topilmadi");
@@ -493,6 +508,14 @@ export function updateUser(
   }
   if (patch.password) checkNewPassword(patch.password);
   getDb().prepare("UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?").run(name, role, active, id);
+  if (patch.commissionPct !== undefined) {
+    const pct = Number(patch.commissionPct);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 50) throw new Error("Foiz 0 dan 50 gacha bo‘lsin");
+    getDb().prepare("UPDATE users SET commission_pct = ? WHERE id = ?").run(Math.round(pct * 100) / 100, id);
+  }
+  if (patch.commissionBase) {
+    getDb().prepare("UPDATE users SET commission_base = ? WHERE id = ?").run(patch.commissionBase, id);
+  }
   if (patch.password) {
     getDb()
       .prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
@@ -549,10 +572,12 @@ export type Product = {
   expiry_date: string | null;
   image_url: string | null;
   created_at: string;
+  is_bundle?: number;
 };
 
 export function listProducts(opts?: { q?: string; categoryId?: number; includeInactive?: boolean }) {
-  let sql = `SELECT p.*, c.name AS category_name
+  let sql = `SELECT p.*, c.name AS category_name,
+             EXISTS (SELECT 1 FROM bundle_items b WHERE b.bundle_id = p.id) AS is_bundle
              FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE 1=1`;
   const params: unknown[] = [];
   if (!opts?.includeInactive) {
@@ -656,6 +681,7 @@ export function updateProduct(id: number, patch: Partial<Product> & { active?: b
       patch.active === undefined ? current.active : patch.active ? 1 : 0,
       id,
     );
+  refreshBundle(getDb(), id);
   return getProduct(id);
 }
 
@@ -857,7 +883,6 @@ export function createSale(input: {
       `INSERT INTO sale_items (sale_id, product_id, name, unit, qty, buy_price, sell_price, discount, total)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    const stockStmt = db.prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
     for (const line of lines) {
       itemStmt.run(
         saleId,
@@ -870,7 +895,7 @@ export function createSale(input: {
         line.discount,
         line.total,
       );
-      if (line.p.id !== null) stockStmt.run(line.qty, line.p.id);
+      if (line.p.id !== null) moveStock(db, line.p.id, -line.qty);
     }
     if (debt > 0 && input.customerId) {
       db.prepare("UPDATE customers SET debt = debt + ? WHERE id = ?").run(debt, input.customerId);
@@ -934,6 +959,7 @@ export function createStockIn(input: {
   try {
     const lines = input.items.map((item) => {
       const p = getProduct(item.product_id);
+      if (isBundle(p.id)) throw new Error(`${p.name} — to'plam. Kirimni uning tarkibidagi mahsulotlarga qiling`);
       if (!Number.isFinite(item.qty) || item.qty <= 0) throw new Error("Miqdor noto'g'ri");
       const buy = Math.round(item.buy_price ?? p.buy_price);
       const sell = Math.round(item.sell_price ?? p.sell_price);
@@ -1258,6 +1284,7 @@ export function exportBackup() {
     "settings",
     "categories",
     "products",
+    "bundle_items",
     "customers",
     "suppliers",
     "sales",

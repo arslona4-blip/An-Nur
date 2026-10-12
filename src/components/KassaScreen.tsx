@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { PauseCircle, Plus, Scale, ScanLine, Search, Trash2 } from "lucide-react";
+import { Monitor, PauseCircle, Plus, Scale, ScanLine, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { FiscalQr } from "@/components/FiscalQr";
 import { ScaleReader } from "@/components/ScaleReader";
 import { Button, Input, Modal, Select } from "@/components/ui";
 import { api, NetworkError } from "@/lib/client";
+import { onDisplayHello, publishDisplay } from "@/lib/customerDisplay";
 import { queueOfflineSale } from "@/lib/offline";
 import { dualPrice, methodLabel, PAYMENT_METHODS, som } from "@/lib/format";
 
@@ -320,6 +321,49 @@ export function KassaScreen() {
     refreshDiscounts(cart);
   }, [cart, refreshDiscounts]);
 
+  const publish = useRef(() => {});
+  publish.current = () => {
+    if (receipt) {
+      publishDisplay({
+        mode: "done",
+        lines: [],
+        subtotal: receipt.total,
+        discount: 0,
+        total: receipt.total,
+        paid: receipt.paid,
+        change: receipt.change_amount,
+        method: receipt.payment_method,
+      });
+      return;
+    }
+    publishDisplay({
+      mode: payOpen ? "pay" : cart.length ? "cart" : "idle",
+      lines: cart.map((l) => ({
+        name: l.product.name,
+        qty: l.qty,
+        unit: l.product.unit,
+        price: l.product.sell_price,
+        total: Math.round(l.qty * l.product.sell_price),
+      })),
+      subtotal,
+      discount: subtotal - total,
+      total,
+      paid: payOpen && method === "naqd" ? Number(paid || 0) : 0,
+      change: 0,
+      method: payOpen ? method : presetMethod,
+    });
+  };
+
+  useEffect(() => {
+    publish.current();
+  }, [cart, total, subtotal, payOpen, method, paid, receipt, presetMethod]);
+
+  useEffect(() => onDisplayHello(() => publish.current()), []);
+
+  function openDisplay() {
+    window.open("/ekran", "annur-ekran", "popup,width=1280,height=800");
+  }
+
   const usdEnabled = settings.usd_enabled === "1";
   const usdRate = Number(settings.usd_rate || 12500);
   const canCheckout = !busy && !(method === "qarz" && !customerId);
@@ -539,7 +583,17 @@ export function KassaScreen() {
       <aside className="flex max-h-[46%] w-full shrink-0 flex-col border-t border-line bg-white md:max-h-none md:w-[380px] md:border-l md:border-t-0">
         <div className="border-b border-line p-4">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold">Savatcha</div>
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold">Savatcha</div>
+              <button
+                onClick={openDisplay}
+                className="hidden items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-brand hover:text-brand md:flex"
+                title="Xaridorga qaragan ikkinchi monitorda savatchani ko‘rsatish"
+              >
+                <Monitor size={13} />
+                Xaridor ekrani
+              </button>
+            </div>
             {parked.length ? (
               <button
                 onClick={() => setParkedOpen(true)}

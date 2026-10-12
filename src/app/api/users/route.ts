@@ -38,6 +38,8 @@ export async function PUT(req: Request) {
         role: body.role === "admin" || body.role === "kassir" ? body.role : undefined,
         active: typeof body.active === "boolean" ? body.active : undefined,
         password: typeof body.password === "string" ? body.password : undefined,
+        commissionPct: body.commissionPct === undefined ? undefined : Number(body.commissionPct),
+        commissionBase: body.commissionBase === "foyda" || body.commissionBase === "savdo" ? body.commissionBase : undefined,
       }),
     });
   } catch (e) {

@@ -22,8 +22,10 @@ type Product = {
   active: number;
   expiry_date?: string | null;
   image_url?: string | null;
+  is_bundle?: number;
 };
 type Category = { id: number; name: string };
+type Part = { product_id: number; name: string; unit: string; qty: number };
 
 type Draft = {
   name: string;
@@ -66,6 +68,48 @@ export function ProductsScreen() {
   const [recognizing, setRecognizing] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const [bundleOn, setBundleOn] = useState(false);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [partsDirty, setPartsDirty] = useState(false);
+  const [partPick, setPartPick] = useState("");
+  const [partQty, setPartQty] = useState("1");
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+
+  async function openBundleEditor(productId: number | null, on: boolean) {
+    setBundleOn(on);
+    setPartsDirty(false);
+    setPartPick("");
+    setPartQty("1");
+    setParts([]);
+    if (on || productId) {
+      api<{ products: Product[] }>("/api/products")
+        .then((d) => setAllProducts(d.products))
+        .catch(() => {});
+    }
+    if (productId && on) {
+      const d = await api<{ parts: Array<{ component_id: number; name: string; unit: string; qty: number }> }>(
+        `/api/products/bundle?id=${productId}`,
+      );
+      setParts(d.parts.map((p) => ({ product_id: p.component_id, name: p.name, unit: p.unit, qty: p.qty })));
+    }
+  }
+
+  function addPart() {
+    const p = allProducts.find((x) => String(x.id) === partPick);
+    const qty = Number(partQty);
+    if (!p || !(qty > 0)) return;
+    setParts((prev) => {
+      const i = prev.findIndex((x) => x.product_id === p.id);
+      if (i >= 0) return prev.map((x, j) => (j === i ? { ...x, qty: x.qty + qty } : x));
+      return [...prev, { product_id: p.id, name: p.name, unit: p.unit, qty }];
+    });
+    setPartsDirty(true);
+    setPartPick("");
+    setPartQty("1");
+  }
+
+  const partsCost = parts.reduce((s, x) => s + Math.round((allProducts.find((p) => p.id === x.product_id)?.buy_price || 0) * x.qty), 0);
+  const partsPrice = parts.reduce((s, x) => s + Math.round((allProducts.find((p) => p.id === x.product_id)?.sell_price || 0) * x.qty), 0);
 
   async function load(search = q, cat = categoryFilter) {
     const qs = new URLSearchParams({ all: "1", q: search });
@@ -85,6 +129,7 @@ export function ProductsScreen() {
   function startCreate() {
     setEditing(null);
     setForm(emptyDraft());
+    openBundleEditor(null, false).catch(() => {});
     setOpen(true);
   }
 
@@ -102,6 +147,7 @@ export function ProductsScreen() {
       expiry_date: p.expiry_date || "",
       image_url: p.image_url || "",
     });
+    openBundleEditor(p.id, !!p.is_bundle).catch((e) => setError(e.message));
     setOpen(true);
   }
 
@@ -163,9 +209,9 @@ export function ProductsScreen() {
         barcode: form.barcode,
         category_id: form.category_id ? Number(form.category_id) : null,
         unit: form.unit,
-        buy_price: Number(form.buy_price || 0),
+        buy_price: bundleOn ? partsCost : Number(form.buy_price || 0),
         sell_price: Number(form.sell_price || 0),
-        stock: Number(form.stock || 0),
+        stock: bundleOn ? 0 : Number(form.stock || 0),
         min_stock: Number(form.min_stock || 0),
         expiry_date: form.expiry_date || null,
         image_url: form.image_url || null,
@@ -177,8 +223,20 @@ export function ProductsScreen() {
       ) {
         return;
       }
-      if (editing) await api("/api/products", { method: "PUT", body: JSON.stringify(payload) });
-      else await api("/api/products", { method: "POST", body: JSON.stringify(payload) });
+      if (bundleOn && parts.length === 0) throw new Error("To‘plam tarkibiga mahsulot qo‘shing");
+      const saved = editing
+        ? await api<{ product: Product }>("/api/products", { method: "PUT", body: JSON.stringify(payload) })
+        : await api<{ product: Product }>("/api/products", { method: "POST", body: JSON.stringify(payload) });
+      const wasBundle = !!editing?.is_bundle;
+      if ((bundleOn && (partsDirty || !wasBundle)) || (!bundleOn && wasBundle)) {
+        await api("/api/products/bundle", {
+          method: "PUT",
+          body: JSON.stringify({
+            id: saved.product.id,
+            parts: bundleOn ? parts.map((x) => ({ product_id: x.product_id, qty: x.qty })) : [],
+          }),
+        });
+      }
       setOpen(false);
       await load();
     } catch (e) {
@@ -318,7 +376,12 @@ export function ProductsScreen() {
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-bg text-xs text-muted">—</div>
                   )}
                 </td>
-                <td className="px-4 py-3 font-medium">{p.name}</td>
+                <td className="px-4 py-3 font-medium">
+                  {p.name}
+                  {p.is_bundle ? (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">To‘plam</span>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3 num text-muted">{p.barcode || p.sku}</td>
                 <td className="px-4 py-3">{p.category_name || "—"}</td>
                 <td className={`px-4 py-3 num ${p.min_stock && p.stock <= p.min_stock ? "text-danger font-semibold" : ""}`}>
@@ -364,17 +427,108 @@ export function ProductsScreen() {
               </Select>
             </Field>
           </div>
+          <label className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={bundleOn}
+              onChange={(e) => {
+                setBundleOn(e.target.checked);
+                setPartsDirty(true);
+                if (e.target.checked && !allProducts.length) {
+                  api<{ products: Product[] }>("/api/products")
+                    .then((d) => setAllProducts(d.products))
+                    .catch(() => {});
+                }
+              }}
+            />
+            <span>
+              <b>To‘plam (komplekt)</b> — bir nechta mahsulotdan iborat. Sotilganda ombordan har biri alohida ayiriladi.
+            </span>
+          </label>
+          {bundleOn ? (
+            <div className="space-y-2 rounded-xl bg-bg p-3">
+              <div className="text-sm font-semibold">To‘plam tarkibi</div>
+              {parts.length === 0 ? <div className="text-xs text-muted">Hali mahsulot qo‘shilmagan</div> : null}
+              {parts.map((x) => (
+                <div key={x.product_id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate">{x.name}</span>
+                  <div className="w-20 shrink-0">
+                    <Input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      className="h-8"
+                      value={x.qty}
+                      onChange={(e) => {
+                        const qty = Number(e.target.value);
+                        setParts((prev) => prev.map((y) => (y.product_id === x.product_id ? { ...y, qty } : y)));
+                        setPartsDirty(true);
+                      }}
+                    />
+                  </div>
+                  <span className="w-10 text-xs text-muted">{x.unit}</span>
+                  <button
+                    type="button"
+                    className="px-1 text-muted"
+                    aria-label="O‘chirish"
+                    onClick={() => {
+                      setParts((prev) => prev.filter((y) => y.product_id !== x.product_id));
+                      setPartsDirty(true);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <Select value={partPick} onChange={(e) => setPartPick(e.target.value)}>
+                    <option value="">Mahsulot tanlang...</option>
+                    {allProducts
+                      .filter((p) => p.id !== editing?.id && !p.is_bundle)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.stock} {p.unit})
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+                <div className="w-20 shrink-0">
+                  <Input type="number" step="0.001" min="0" value={partQty} onChange={(e) => setPartQty(e.target.value)} />
+                </div>
+                <Button type="button" variant="ghost" onClick={addPart} disabled={!partPick}>
+                  Qo‘shish
+                </Button>
+              </div>
+              {parts.length ? (
+                <div className="text-xs text-muted">
+                  Tarkib tannarxi: <b className="num">{som(partsCost)}</b> · alohida sotilsa: <b className="num">{som(partsPrice)}</b>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Olish narxi">
-              <Input type="number" value={form.buy_price} onChange={(e) => setForm({ ...form, buy_price: e.target.value })} />
+            <Field label={bundleOn ? "Olish narxi (tarkibdan)" : "Olish narxi"}>
+              <Input
+                type="number"
+                value={bundleOn ? String(partsCost) : form.buy_price}
+                disabled={bundleOn}
+                onChange={(e) => setForm({ ...form, buy_price: e.target.value })}
+              />
             </Field>
             <Field label="Sotish narxi">
               <Input type="number" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Omborda">
-              <Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+            <Field label={bundleOn ? "Nechta yig‘sa bo‘ladi" : "Omborda"}>
+              <Input
+                type="number"
+                value={bundleOn ? (editing?.is_bundle && !partsDirty ? String(editing.stock) : "") : form.stock}
+                placeholder={bundleOn ? "saqlangach hisoblanadi" : undefined}
+                disabled={bundleOn}
+                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+              />
             </Field>
             <Field label="Minimal qoldiq">
               <Input type="number" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} />

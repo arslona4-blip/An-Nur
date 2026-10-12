@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { getDb, getProduct, getSale, getSettings } from "./db";
 import { periodRange, tashkentDate } from "./format";
+import { moveStock } from "./phase6";
 
 type SqlRow = Record<string, unknown>;
 
@@ -253,10 +254,9 @@ export function createReturn(input: {
       `INSERT INTO sale_return_items (return_id, sale_item_id, product_id, name, unit, qty, sell_price, total)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    const stockStmt = db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
     for (const line of lines) {
       itemStmt.run(returnId, line.sale_item_id, line.product_id, line.name, line.unit, line.qty, line.sell_price, line.total);
-      if (line.product_id !== null) stockStmt.run(line.qty, line.product_id);
+      if (line.product_id !== null) moveStock(db, line.product_id, line.qty);
     }
     if (String((sale as SqlRow).payment_method) === "qarz" && (sale as SqlRow).customer_id && input.refundMethod === "qarz") {
       const debtReduce = Math.min(total, Number((sale as SqlRow).debt_amount || 0));
@@ -305,7 +305,13 @@ export function listReturns(from?: string, to?: string) {
 
 export function createInventoryCount(userId: number, note?: string) {
   const db = getDb();
-  const products = rows<SqlRow>(db.prepare("SELECT id, name, unit, stock FROM products WHERE active = 1 ORDER BY name").all());
+  const products = rows<SqlRow>(
+    db
+      .prepare(
+        "SELECT id, name, unit, stock FROM products WHERE active = 1 AND id NOT IN (SELECT bundle_id FROM bundle_items) ORDER BY name",
+      )
+      .all(),
+  );
   const day = tashkentDate().replace(/-/g, "");
   const count = (db.prepare("SELECT COUNT(*) AS c FROM inventory_counts WHERE number LIKE ?").get(`I-${day}-%`) as { c: number }).c;
   const number = `I-${day}-${String(count + 1).padStart(4, "0")}`;
@@ -428,7 +434,7 @@ export function createWaste(input: {
       input.note || null,
       new Date().toISOString(),
     );
-    db.prepare("UPDATE products SET stock = stock - ? WHERE id = ?").run(input.qty, p.id);
+    moveStock(db, p.id, -input.qty);
     db.exec("COMMIT");
   } catch (e) {
     db.exec("ROLLBACK");
@@ -454,6 +460,7 @@ const BACKUP_TABLES = [
   "settings",
   "categories",
   "products",
+  "bundle_items",
   "customers",
   "suppliers",
   "sales",

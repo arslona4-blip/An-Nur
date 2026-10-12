@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import net from "node:net";
 import { getDb, getProduct, getSale, getSettings } from "./db";
 import { methodLabel, som, tashkentDate, tashkentDateTime } from "./format";
+import { moveStock } from "./phase6";
 
 type SqlRow = Record<string, unknown>;
 
@@ -213,10 +214,9 @@ export function createDeliveryOrder(input: {
     const itemStmt = db.prepare(
       `INSERT INTO delivery_order_items (order_id, product_id, name, unit, qty, sell_price, total) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
-    const stockStmt = db.prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
     for (const line of lines) {
       itemStmt.run(orderId, line.p.id, line.p.name, line.p.unit, line.qty, line.price, line.total);
-      stockStmt.run(line.qty, line.p.id);
+      moveStock(db, line.p.id, -line.qty);
     }
     db.exec("COMMIT");
     return getDeliveryOrder(orderId);
@@ -239,7 +239,7 @@ export function updateDeliveryStatus(id: number, status: string, paymentMethod?:
     db.exec("BEGIN");
     try {
       for (const item of order.items as SqlRow[]) {
-        db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(item.qty, item.product_id);
+        moveStock(db, Number(item.product_id), Number(item.qty));
       }
       db.prepare("UPDATE delivery_orders SET status = 'cancelled' WHERE id = ?").run(id);
       db.exec("COMMIT");
