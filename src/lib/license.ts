@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { getDb, getSettings } from "./db";
+import { som } from "./format";
 
 // Public half of the subscription panel's signing key. Only the panel can issue a valid paid-until date.
 const PANEL_PUBLIC_KEY = createPublicKey(`-----BEGIN PUBLIC KEY-----
@@ -43,8 +44,11 @@ function payInfo(payload: TokenPayload): PayInfo | null {
   return { card: payload.p.c, holder: payload.p.h || "", phone: payload.p.t || "", amount: payload.p.m ?? null };
 }
 
-const runtime = globalThis as unknown as { annurLicense?: { lastTry: number; inFlight: boolean } };
-const state = (runtime.annurLicense ??= { lastTry: 0, inFlight: false });
+const runtime = globalThis as unknown as { annurLicense?: { lastTry: number; inFlight: boolean; lastNotify: number } };
+const state = (runtime.annurLicense ??= { lastTry: 0, inFlight: false, lastNotify: 0 });
+
+const NOTIFY_DAYS = new Set([5, 3, 1, 0]);
+const NOTIFY_RETRY_MS = 30 * 60000;
 
 function licenseKey() {
   return process.env.ANNUR_LICENSE_KEY?.trim().toUpperCase() || "";
@@ -121,7 +125,61 @@ async function refresh(force = false) {
   }
 }
 
+// The owner may not look at the till every day, so the shop's own bot writes to the owner's Telegram too.
+function ownerNoticeKey(st: LicenseState, today: string): string | null {
+  if (st.code === "soon" && st.daysLeft !== null && NOTIFY_DAYS.has(st.daysLeft)) return `${today}|soon`;
+  if (st.code === "grace") return `${today}|grace`;
+  if (st.code === "blocked" && st.paidUntil) return `blocked|${st.paidUntil}`;
+  return null;
+}
+
+function ownerNoticeText(st: LicenseState) {
+  const lines = [`⚠️ ${st.shopName || "An-Nur kassa"}: ${st.message}`];
+  if (st.pay) {
+    lines.push("", `To‘lov kartasi: ${st.pay.card}${st.pay.holder ? ` (${st.pay.holder})` : ""}`);
+    if (st.pay.amount) lines.push(`Oylik: ${som(st.pay.amount)}`);
+    if (st.pay.phone) lines.push(`To‘lagach xabar bering: ${st.pay.phone}`);
+  }
+  return lines.join("\n");
+}
+
+async function notifyOwner(st: LicenseState) {
+  const key = ownerNoticeKey(st, tashkentDay(Date.now()));
+  if (!key) return;
+  const settings = getSettings();
+  if (settings.license_notified === key || Date.now() - state.lastNotify < NOTIFY_RETRY_MS) return;
+  const token = settings.telegram_bot_token?.trim();
+  const chats = new Set(
+    [...String(settings.telegram_admin_ids || "").split(/[,;\s]+/), settings.telegram_chat_id || ""]
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
+  if (!token || !chats.size) return;
+  state.lastNotify = Date.now();
+  let sent = 0;
+  for (const chat of chats) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chat, text: ownerNoticeText(st) }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (((await res.json()) as { ok?: boolean }).ok) sent++;
+    } catch {
+      // the next page load after NOTIFY_RETRY_MS tries again
+    }
+  }
+  if (sent) saveSetting("license_notified", key);
+}
+
 export function licenseStatus(): LicenseState {
+  const st = computeStatus();
+  void notifyOwner(st).catch(() => {});
+  return st;
+}
+
+function computeStatus(): LicenseState {
   const key = licenseKey();
   const base = { daysLeft: null, paidUntil: null, shopName: null, checkedAt: null, lastError: null, pay: null };
   if (!key) return { ...base, code: "off", message: "" };

@@ -6,6 +6,7 @@ import { som } from "@/lib/format";
 import { licenseStatus } from "@/lib/license";
 import { getCurrentBranch } from "@/lib/phase4";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { LicenseNotice } from "@/components/LicenseNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,9 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
             </div>
           ) : null}
         </div>
+      ) : null}
+      {user.role === "admin" && BANNER[license.code] ? (
+        <LicenseNotice code={license.code} message={license.message} pay={license.pay} />
       ) : null}
       {children}
     </Shell>
