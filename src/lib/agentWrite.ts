@@ -15,8 +15,18 @@ function fail(message: string, status = 400): never {
   throw err;
 }
 
+// Sales join the shift of whoever records them, so the assistant records as the cashier on duty; otherwise
+// its sales would sit outside the open shift and never show on the till's shift screen or cash count.
 function agentUserId() {
-  const admin = getDb()
+  const db = getDb();
+  const onDuty = db
+    .prepare(
+      `SELECT u.id FROM shifts s JOIN users u ON u.id = s.user_id
+       WHERE s.status = 'open' AND u.active = 1 ORDER BY s.id DESC LIMIT 1`,
+    )
+    .get() as { id: number } | undefined;
+  if (onDuty) return onDuty.id;
+  const admin = db
     .prepare("SELECT id FROM users WHERE role = 'admin' AND active = 1 ORDER BY id LIMIT 1")
     .get() as { id: number } | undefined;
   if (!admin) fail("Faol admin topilmadi");
