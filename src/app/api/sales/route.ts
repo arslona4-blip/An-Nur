@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       discount: body.discount || 0,
       paid: body.paid,
       foreignPaid: body.foreignPaid,
+      bonusUse: Number(body.bonusUse) || 0,
       note: body.note,
       items: body.items || [],
       clientId: body.clientId ? String(body.clientId) : null,

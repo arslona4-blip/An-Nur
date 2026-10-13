@@ -86,8 +86,17 @@ html.big-text button {
     display: none !important;
   }
   .label-sheet,
-  .label-sheet * {
+  .label-sheet *,
+  .print-area,
+  .print-area * {
     visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
   }
   .label-sheet {
     position: absolute;

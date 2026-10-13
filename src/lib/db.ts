@@ -19,6 +19,7 @@ import { assertLicensed } from "./license";
 import { migratePhase5 } from "./phase5";
 import { isBundle, migratePhase6, moveStock, refreshBundle } from "./phase6";
 import { migratePhase7 } from "./phase7";
+import { earnedBonus, logPriceChange, migratePhase8, recordSaleBonus, resolveBonusUse } from "./phase8";
 
 type SqlRow = Record<string, unknown>;
 
@@ -44,6 +45,7 @@ export function getDb() {
     migratePhase5(db);
     migratePhase6(db);
     migratePhase7(db);
+    migratePhase8(db);
     globalForDb.hisobDb = db;
   }
   ensureFoodCatalog(globalForDb.hisobDb);
@@ -54,6 +56,7 @@ export function getDb() {
   migratePhase5(globalForDb.hisobDb);
   migratePhase6(globalForDb.hisobDb);
   migratePhase7(globalForDb.hisobDb);
+  migratePhase8(globalForDb.hisobDb);
   return globalForDb.hisobDb;
 }
 
@@ -277,6 +280,7 @@ const STORE_DATA_TABLES = [
   "offline_queue",
   "telegram_sessions",
   "bundle_items",
+  "price_history",
   "products",
   "customers",
   "suppliers",
@@ -684,6 +688,16 @@ export function updateProduct(id: number, patch: Partial<Product> & { active?: b
       patch.active === undefined ? current.active : patch.active ? 1 : 0,
       id,
     );
+  logPriceChange(
+    getDb(),
+    id,
+    { buy: Number(current.buy_price), sell: Number(current.sell_price) },
+    {
+      buy: Math.round(Number(patch.buy_price ?? current.buy_price)),
+      sell: Math.round(Number(patch.sell_price ?? current.sell_price)),
+    },
+    "tahrir",
+  );
   refreshBundle(getDb(), id);
   return getProduct(id);
 }
@@ -768,6 +782,7 @@ export function createSale(input: {
   discount?: number;
   paid?: number;
   foreignPaid?: number;
+  bonusUse?: number;
   note?: string;
   items: CartItem[];
   clientId?: string | null;
@@ -821,7 +836,8 @@ export function createSale(input: {
     const requested = Math.round(Number(input.discount) || 0);
     if (requested < 0) throw new Error("Chegirma noto'g'ri");
     const discount = Math.min(requested, afterItems);
-    const total = afterItems - discount;
+    const bonusUsed = resolveBonusUse(db, input.customerId, input.bonusUse, afterItems - discount, settings);
+    const total = afterItems - discount - bonusUsed;
     const method = input.paymentMethod;
     if (method === "qarz" && !input.customerId) throw new Error("Qarzga sotish uchun mijoz tanlang");
     if (method === "usd" && settings.usd_enabled !== "1") throw new Error("USD to'lovi o'chirilgan");
@@ -868,7 +884,7 @@ export function createSale(input: {
         input.customerId || null,
         method,
         subtotal,
-        discount,
+        discount + bonusUsed,
         total,
         paid,
         change,
@@ -902,6 +918,9 @@ export function createSale(input: {
     }
     if (debt > 0 && input.customerId) {
       db.prepare("UPDATE customers SET debt = debt + ? WHERE id = ?").run(debt, input.customerId);
+    }
+    if (input.customerId) {
+      recordSaleBonus(db, saleId, input.customerId, bonusUsed, earnedBonus(total, method, input.customerId, settings));
     }
     db.exec("COMMIT");
     linkSaleToShift(saleId, input.userId);
@@ -993,6 +1012,14 @@ export function createStockIn(input: {
     for (const line of lines) {
       itemStmt.run(id, line.p.id, line.p.name, line.qty, line.buy, line.sell, line.expiry_date);
       upd.run(line.qty, line.buy, line.sell, line.p.id);
+      logPriceChange(
+        db,
+        line.p.id,
+        { buy: Number(line.p.buy_price), sell: Number(line.p.sell_price) },
+        { buy: line.buy, sell: line.sell },
+        "kirim",
+        input.userId,
+      );
       if (line.expiry_date) updExpiry.run(line.expiry_date, line.p.id, line.expiry_date);
     }
     if (input.supplierId && total - paid > 0) {
@@ -1288,6 +1315,7 @@ export function exportBackup() {
     "categories",
     "products",
     "bundle_items",
+    "price_history",
     "customers",
     "suppliers",
     "sales",

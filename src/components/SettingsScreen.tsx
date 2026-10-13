@@ -41,6 +41,9 @@ export function SettingsScreen() {
     telegram_admin_ids: "",
     telegram_courier_ids: "",
     delivery_fee_default: "0",
+    bonus_enabled: "0",
+    bonus_pct: "1",
+    bonus_max_pct: "50",
   });
   const [msg, setMsg] = useState("");
 
@@ -80,6 +83,9 @@ export function SettingsScreen() {
         telegram_admin_ids: d.settings.telegram_admin_ids || "",
         telegram_courier_ids: d.settings.telegram_courier_ids || "",
         delivery_fee_default: d.settings.delivery_fee_default || "0",
+        bonus_enabled: d.settings.bonus_enabled || "0",
+        bonus_pct: d.settings.bonus_pct || "1",
+        bonus_max_pct: d.settings.bonus_max_pct || "50",
       });
     });
   }, []);
@@ -187,6 +193,43 @@ export function SettingsScreen() {
         </label>
         <Button onClick={save}>Saqlash</Button>
         {msg ? <div className="text-sm text-ok">{msg}</div> : null}
+      </Card>
+      <Card className="space-y-3 p-4">
+        <div className="font-bold">Bonus (keshbek)</div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.bonus_enabled === "1"}
+            onChange={(e) => setForm({ ...form, bonus_enabled: e.target.checked ? "1" : "0" })}
+          />
+          Mijozlarga har xariddan bonus yig‘ish
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Bonus foizi (%)">
+            <Input
+              type="number"
+              min="0"
+              max="50"
+              step="0.5"
+              value={form.bonus_pct}
+              onChange={(e) => setForm({ ...form, bonus_pct: e.target.value })}
+            />
+          </Field>
+          <Field label="Chekning necha % bonus bilan to‘lanadi">
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              value={form.bonus_max_pct}
+              onChange={(e) => setForm({ ...form, bonus_max_pct: e.target.value })}
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-muted">
+          Bonus kassada mijoz tanlanganda yig‘iladi (qarzga savdodan tashqari). Keyingi xaridda «Bonusdan to‘lash» bosiladi. Mahsulot
+          qaytarilsa, bonus ham qaytadi.
+        </p>
+        <Button onClick={save}>Saqlash</Button>
       </Card>
       <Card className="space-y-3 p-4">
         <div className="font-bold">Valyuta va jihozlar</div>

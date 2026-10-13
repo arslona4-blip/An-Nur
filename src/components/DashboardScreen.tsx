@@ -130,7 +130,14 @@ export function DashboardScreen() {
           </div>
         </Card>
         <Card className="overflow-hidden">
-          <div className="border-b border-line px-4 py-3 font-bold">Kam qolgan mahsulot</div>
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="font-bold">Kam qolgan mahsulot</div>
+            {data.payables != null ? (
+              <Link href="/buyurtma" className="text-xs text-brand">
+                Buyurtma tuzish
+              </Link>
+            ) : null}
+          </div>
           <div className="divide-y divide-line">
             {data.lowStock.length === 0 ? <div className="p-4 text-sm text-muted">Hamma mahsulot yetarli</div> : null}
             {data.lowStock.map((p) => (

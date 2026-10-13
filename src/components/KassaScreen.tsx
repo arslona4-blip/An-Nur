@@ -23,7 +23,7 @@ type Product = {
   stock: number;
 };
 type Category = { id: number; name: string; color: string };
-type Customer = { id: number; name: string; phone: string | null; debt: number };
+type Customer = { id: number; name: string; phone: string | null; debt: number; bonus?: number };
 type CartLine = { product: Product; qty: number };
 type ParkedSale = { id: string; at: string; cart: CartLine[]; customerId: number; discount: number; method: string };
 
@@ -86,6 +86,8 @@ type Sale = {
   payment_method: string;
   customer_id?: number | null;
   customer_name?: string;
+  bonus_used?: number;
+  bonus_earned?: number;
   created_at: string;
   items: Array<{ name: string; qty: number; unit: string; sell_price: number; total: number }>;
 };
@@ -130,6 +132,7 @@ export function KassaScreen() {
   const [link, setLink] = useState<{ url: string; svg: string } | null>(null);
   const [smsPhone, setSmsPhone] = useState("");
   const [smsState, setSmsState] = useState("");
+  const [bonusUse, setBonusUse] = useState(0);
 
   useEffect(() => {
     setParked(readParked());
@@ -357,6 +360,11 @@ export function KassaScreen() {
   const subtotal = cartTotal(cart);
   const lineDiscountTotal = cart.reduce((s, l) => s + (itemDiscounts[l.product.id] || 0), 0);
   const total = Math.max(0, subtotal - Math.round(discount || 0) - autoDiscount - lineDiscountTotal);
+  const customer = customers.find((c) => c.id === customerId);
+  const bonusOn = settings.bonus_enabled === "1";
+  const bonusMaxPct = Math.min(100, Math.max(0, Number(settings.bonus_max_pct ?? 100)));
+  const bonusAvailable = bonusOn && customer ? Math.max(0, Math.min(customer.bonus || 0, Math.floor((total * bonusMaxPct) / 100))) : 0;
+  const payable = Math.max(0, total - bonusUse);
 
   const refreshDiscounts = useCallback(async (all: CartLine[]) => {
     const lines = all.filter((l) => !isFree(l.product));
@@ -419,8 +427,8 @@ export function KassaScreen() {
         total: Math.round(l.qty * l.product.sell_price),
       })),
       subtotal,
-      discount: subtotal - total,
-      total,
+      discount: subtotal - (payOpen ? payable : total),
+      total: payOpen ? payable : total,
       paid: payOpen && method === "naqd" ? Number(paid || 0) : 0,
       change: 0,
       method: payOpen ? method : presetMethod,
@@ -429,7 +437,7 @@ export function KassaScreen() {
 
   useEffect(() => {
     publish.current();
-  }, [cart, total, subtotal, payOpen, method, paid, receipt, presetMethod]);
+  }, [cart, total, payable, subtotal, payOpen, method, paid, receipt, presetMethod]);
 
   useEffect(() => onDisplayHello(() => publish.current()), []);
 
@@ -444,6 +452,7 @@ export function KassaScreen() {
   function openPay() {
     if (!cart.length) return;
     setMethod(presetMethod);
+    setBonusUse(0);
     setPaid(presetMethod === "qarz" ? "0" : String(total));
     setError("");
     setPayOpen(true);
@@ -484,7 +493,7 @@ export function KassaScreen() {
   async function checkout() {
     setError("");
     setBusy(true);
-    const paidNum = method === "qarz" ? Number(paid || 0) : method === "usd" ? Number(paid || 0) : Number(paid || total);
+    const paidNum = method === "qarz" ? Number(paid || 0) : method === "usd" ? Number(paid || 0) : Number(paid || payable);
     const payload = {
       clientId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`,
       customerId: customerId || null,
@@ -492,6 +501,7 @@ export function KassaScreen() {
       discount: Math.round(Number(discount || 0) + autoDiscount),
       paid: method === "usd" ? Math.round(paidNum * usdRate) : paidNum,
       foreignPaid: method === "usd" ? paidNum : undefined,
+      bonusUse: bonusUse || undefined,
       items: cart.map((l) =>
         isFree(l.product)
           ? { product_id: null, qty: l.qty, price: l.product.sell_price, name: l.product.name }
@@ -507,6 +517,7 @@ export function KassaScreen() {
       setCart([]);
       setDiscount(0);
       setCustomerId(0);
+      setBonusUse(0);
       setPresetMethod("naqd");
       setReceipt(data.sale);
       setFiscalQr(null);
@@ -711,6 +722,7 @@ export function KassaScreen() {
               <option key={c.id} value={c.id}>
                 {c.name}
                 {c.debt ? ` (qarz ${som(c.debt)})` : ""}
+                {bonusOn && c.bonus ? ` · bonus ${som(c.bonus)}` : ""}
               </option>
             ))}
           </Select>
@@ -979,14 +991,15 @@ export function KassaScreen() {
               key={m.id}
               onClick={() => {
                 setMethod(m.id);
+                if (m.id === "qarz") setBonusUse(0);
                 setPaid(
                   m.id === "qarz"
                     ? "0"
                     : m.id === "usd"
                       ? usdRate > 0
-                        ? (Math.ceil((total / usdRate) * 100) / 100).toFixed(2)
+                        ? (Math.ceil((payable / usdRate) * 100) / 100).toFixed(2)
                         : ""
-                      : String(total),
+                      : String(payable),
                 );
               }}
               className={`rounded-xl border px-3 py-3 text-sm font-semibold ${method === m.id ? "border-brand bg-brand text-white" : "border-line"}`}
@@ -998,10 +1011,48 @@ export function KassaScreen() {
         {method === "qarz" && !customerId ? (
           <div className="mt-3 text-sm text-danger">Qarzga sotish uchun mijoz tanlang.</div>
         ) : null}
+        {bonusOn && customer && (customer.bonus || 0) > 0 && method !== "qarz" ? (
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm">
+            <span>
+              {customer.name}: bonus <b className="num">{som(customer.bonus || 0)}</b>
+            </span>
+            {bonusUse ? (
+              <Button
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => {
+                  setBonusUse(0);
+                  if (method !== "usd") setPaid(String(total));
+                }}
+              >
+                Bekor qilish
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="shrink-0"
+                disabled={!bonusAvailable}
+                onClick={() => {
+                  setBonusUse(bonusAvailable);
+                  if (method !== "usd") setPaid(String(total - bonusAvailable));
+                  else if (usdRate > 0) setPaid((Math.ceil(((total - bonusAvailable) / usdRate) * 100) / 100).toFixed(2));
+                }}
+              >
+                Bonusdan to‘lash (−{som(bonusAvailable)})
+              </Button>
+            )}
+          </div>
+        ) : null}
         <div className="mt-4 space-y-2">
+          {bonusUse ? (
+            <div className="flex justify-between text-sm text-ok">
+              <span>Bonus bilan</span>
+              <span className="num">−{som(bonusUse)}</span>
+            </div>
+          ) : null}
           <div className="flex justify-between font-bold">
             <span>Summa</span>
-            <span className="num">{dualPrice(total, usdRate, usdEnabled)}</span>
+            <span className="num">{dualPrice(payable, usdRate, usdEnabled)}</span>
           </div>
           <Input
             autoFocus
@@ -1022,7 +1073,7 @@ export function KassaScreen() {
           {method === "naqd" ? (
             <>
               <div className="grid grid-cols-3 gap-2">
-                {cashOptions(total).map((v, i) => (
+                {cashOptions(payable).map((v, i) => (
                   <button
                     key={v}
                     type="button"
@@ -1037,15 +1088,15 @@ export function KassaScreen() {
               </div>
               <div
                 className={`rounded-xl px-4 py-3 text-center ${
-                  Number(paid || 0) < total ? "bg-red-50 text-danger" : "bg-emerald-50 text-ok"
+                  Number(paid || 0) < payable ? "bg-red-50 text-danger" : "bg-emerald-50 text-ok"
                 }`}
               >
-                {Number(paid || 0) < total ? (
-                  <div className="text-lg font-bold">Yetmaydi: {som(total - Number(paid || 0))}</div>
+                {Number(paid || 0) < payable ? (
+                  <div className="text-lg font-bold">Yetmaydi: {som(payable - Number(paid || 0))}</div>
                 ) : (
                   <>
                     <div className="text-xs font-semibold uppercase tracking-wide">Qaytim</div>
-                    <div className="text-3xl font-extrabold num">{som(Number(paid || 0) - total)}</div>
+                    <div className="text-3xl font-extrabold num">{som(Number(paid || 0) - payable)}</div>
                   </>
                 )}
               </div>
@@ -1096,6 +1147,18 @@ export function KassaScreen() {
                 <span>Qaytim {som(receipt.change_amount)}</span>
               </div>
               {receipt.debt_amount ? <div>Qarz: {som(receipt.debt_amount)}</div> : null}
+              {receipt.bonus_used ? (
+                <div className="flex justify-between text-xs">
+                  <span>Shundan bonus bilan</span>
+                  <span className="num">{som(receipt.bonus_used)}</span>
+                </div>
+              ) : null}
+              {receipt.bonus_earned ? (
+                <div className="flex justify-between text-xs">
+                  <span>Yig‘ilgan bonus</span>
+                  <span className="num">+{som(receipt.bonus_earned)}</span>
+                </div>
+              ) : null}
               {fiscalQr && settings.fiscal_enabled === "1" ? (
                 <div className="pt-2">
                   <div className="mb-1 text-center text-xs text-muted">Fiskal QR</div>

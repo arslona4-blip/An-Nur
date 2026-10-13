@@ -12,6 +12,7 @@ type Party = {
   address: string | null;
   debt?: number;
   payable?: number;
+  bonus?: number;
   note: string | null;
 };
 
@@ -117,6 +118,7 @@ export function PartiesScreen({ kind }: { kind: "customers" | "suppliers" }) {
               <th className="px-4 py-3 font-medium">Nomi</th>
               <th className="px-4 py-3 font-medium">Telefon</th>
               <th className="px-4 py-3 font-medium">{isCust ? "Qarzi" : "Bizning qarz"}</th>
+              {isCust ? <th className="px-4 py-3 font-medium">Bonus</th> : null}
               <th className="px-4 py-3 font-medium"></th>
             </tr>
           </thead>
@@ -128,6 +130,11 @@ export function PartiesScreen({ kind }: { kind: "customers" | "suppliers" }) {
                 <td className={`px-4 py-3 num ${(r[moneyKey] || 0) > 0 ? "text-danger font-semibold" : ""}`}>
                   {som(Number(r[moneyKey] || 0))}
                 </td>
+                {isCust ? (
+                  <td className={`px-4 py-3 num ${(r.bonus || 0) > 0 ? "font-semibold text-ok" : "text-muted"}`}>
+                    {som(Number(r.bonus || 0))}
+                  </td>
+                ) : null}
                 <td className="px-4 py-3 text-right">
                   {isCust && r.phone && (r.debt || 0) > 0 ? (
                     <Button variant="ghost" className="mr-1" onClick={() => sendDebtSms(r)}>

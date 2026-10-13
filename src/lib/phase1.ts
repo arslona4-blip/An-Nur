@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { getDb, getProduct, getSale, getSettings } from "./db";
 import { periodRange, tashkentDate } from "./format";
 import { moveStock } from "./phase6";
+import { returnSaleBonus } from "./phase8";
 
 type SqlRow = Record<string, unknown>;
 
@@ -201,6 +202,7 @@ export function createReturn(input: {
     );
     const saleShare = itemsSum > 0 ? Math.min(1, Number((sale as SqlRow).total) / itemsSum) : 1;
     let total = 0;
+    let itemsReturned = 0;
     const lines: Array<{
       sale_item_id: number;
       product_id: number | null;
@@ -221,6 +223,7 @@ export function createReturn(input: {
       const paidPerUnit = Number(si.qty) > 0 ? Number(si.total) / Number(si.qty) : Number(si.sell_price);
       const lineTotal = Math.round(item.qty * paidPerUnit * saleShare);
       total += lineTotal;
+      itemsReturned += item.qty * paidPerUnit;
       lines.push({
         sale_item_id: item.sale_item_id,
         product_id: si.product_id == null ? null : Number(si.product_id),
@@ -268,6 +271,7 @@ export function createReturn(input: {
         );
       }
     }
+    if (itemsSum > 0) returnSaleBonus(db, sale as SqlRow, itemsReturned / itemsSum);
     db.exec("COMMIT");
     return getReturn(returnId);
   } catch (e) {
@@ -461,6 +465,7 @@ const BACKUP_TABLES = [
   "categories",
   "products",
   "bundle_items",
+  "price_history",
   "customers",
   "suppliers",
   "sales",
