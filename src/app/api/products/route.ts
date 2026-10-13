@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin, requireUser } from "@/lib/auth";
-import { createProduct, listProducts, topSellingProducts, updateProduct } from "@/lib/db";
+import { createProduct, deleteProduct, listProducts, topSellingProducts, updateProduct } from "@/lib/db";
 import { listProductsByIds } from "@/lib/phase7";
 
 export async function GET(req: Request) {
@@ -46,6 +46,16 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const product = updateProduct(Number(body.id), body);
     return NextResponse.json({ product });
+  } catch (e) {
+    return jsonError(e);
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await requireAdmin();
+    const id = Number(new URL(req.url).searchParams.get("id"));
+    return NextResponse.json({ result: deleteProduct(id) });
   } catch (e) {
     return jsonError(e);
   }

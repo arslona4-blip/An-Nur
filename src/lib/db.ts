@@ -739,6 +739,20 @@ export function updateProduct(id: number, patch: Partial<Product> & { active?: b
   return getProduct(id);
 }
 
+// A product with history (sales, stock-ins, returns, bundles) is only taken off sale, so reports keep its name.
+export function deleteProduct(id: number): "deleted" | "archived" {
+  getProduct(id);
+  const db = getDb();
+  try {
+    db.prepare("DELETE FROM products WHERE id = ?").run(id);
+    return "deleted";
+  } catch (e) {
+    if (!String(e instanceof Error ? e.message : e).includes("FOREIGN KEY")) throw e;
+    db.prepare("UPDATE products SET active = 0 WHERE id = ?").run(id);
+    return "archived";
+  }
+}
+
 export type Party = {
   id: number;
   name: string;

@@ -322,6 +322,32 @@ export function ProductsScreen() {
     }
   }
 
+  async function removeProduct(p: Product) {
+    if (!confirm(`«${p.name}» o‘chirilsinmi?`)) return;
+    setError("");
+    try {
+      const { result } = await api<{ result: "deleted" | "archived" }>(`/api/products?id=${p.id}`, { method: "DELETE" });
+      setOpen(false);
+      await load();
+      if (result === "archived") {
+        alert(`«${p.name}» sotuv tarixida bor, shuning uchun sotuvdan olindi: kassada chiqmaydi, hisobotlarda nomi qoladi. Kerak bo‘lsa, qayta sotuvga qaytarish mumkin.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
+
+  async function restoreProduct(p: Product) {
+    setError("");
+    try {
+      await api("/api/products", { method: "PUT", body: JSON.stringify({ id: p.id, active: true }) });
+      setOpen(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
+
   function updateAiDraft(i: number, patch: Partial<Draft>) {
     setAiDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
   }
@@ -513,7 +539,11 @@ export function ProductsScreen() {
           </thead>
           <tbody>
             {products.map((p) => (
-              <tr key={p.id} className="cursor-pointer border-t border-line hover:bg-bg" onClick={() => startEdit(p)}>
+              <tr
+                key={p.id}
+                className={`cursor-pointer border-t border-line hover:bg-bg ${p.active ? "" : "opacity-50"}`}
+                onClick={() => startEdit(p)}
+              >
                 <td className="px-4 py-2">
                   {p.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -527,6 +557,9 @@ export function ProductsScreen() {
                   {p.is_bundle ? (
                     <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">To‘plam</span>
                   ) : null}
+                  {p.active ? null : (
+                    <span className="ml-2 rounded-full bg-bg px-2 py-0.5 text-xs font-semibold text-muted">Sotuvdan olingan</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 num text-muted">{p.barcode || p.sku}</td>
                 <td className="px-4 py-3">{p.category_name || "—"}</td>
@@ -706,6 +739,17 @@ export function ProductsScreen() {
             <Input type="date" value={form.expiry_date} suppressHydrationWarning onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} />
           </Field>
           <Button onClick={save}>Saqlash</Button>
+          {editing ? (
+            editing.active ? (
+              <Button variant="ghost" className="text-danger" onClick={() => removeProduct(editing)}>
+                Mahsulotni o‘chirish
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => restoreProduct(editing)}>
+                Sotuvga qaytarish
+              </Button>
+            )
+          ) : null}
         </div>
       </Modal>
 
