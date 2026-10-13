@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin, requireUser } from "@/lib/auth";
 import { createProduct, listProducts, topSellingProducts, updateProduct } from "@/lib/db";
+import { listProductsByIds } from "@/lib/phase7";
 
 export async function GET(req: Request) {
   try {
     await requireUser();
     const url = new URL(req.url);
+    const ids = url.searchParams.get("ids");
+    if (ids !== null) {
+      return NextResponse.json({ products: listProductsByIds(ids.split(",").map(Number)) });
+    }
     if (url.searchParams.get("top")) {
       return NextResponse.json({ products: topSellingProducts(Number(url.searchParams.get("top")) || 12) });
     }

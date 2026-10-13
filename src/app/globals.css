@@ -82,6 +82,30 @@ html.big-text button {
     inset: 0;
     background: white;
   }
+  .no-print {
+    display: none !important;
+  }
+  .label-sheet,
+  .label-sheet * {
+    visibility: visible;
+  }
+  .label-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+  .label-sheet .label-item {
+    break-inside: avoid;
+    break-after: page;
+  }
+  .label-sheet.label-a4 {
+    width: 210mm;
+  }
+  .label-sheet.label-a4 .label-item {
+    break-after: auto;
+  }
   .receipt-thermal {
     width: 58mm;
     max-width: 58mm;

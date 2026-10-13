@@ -15,7 +15,7 @@ export function SplashScreen() {
   } as CSSProperties;
 
   useEffect(() => {
-    if (sessionStorage.getItem(SPLASH_KEY) || location.pathname === "/ekran") return;
+    if (sessionStorage.getItem(SPLASH_KEY) || location.pathname === "/ekran" || location.pathname.startsWith("/chek/")) return;
     setVisible(true);
     document.body.classList.add("splash-lock");
 

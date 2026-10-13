@@ -6,6 +6,7 @@ export function proxy(req: NextRequest) {
   const session = req.cookies.get("hisob_session")?.value;
   const publicPath =
     pathname === "/login" ||
+    pathname.startsWith("/chek/") ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/telegram/webhook") ||
     pathname.startsWith("/api/integration/") ||

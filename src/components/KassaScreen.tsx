@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Monitor, PauseCircle, Plus, Scale, ScanLine, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Monitor, PauseCircle, Plus, Scale, ScanLine, Search, Settings2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { FiscalQr } from "@/components/FiscalQr";
@@ -59,6 +59,21 @@ function Kbd({ children }: { children: string }) {
   );
 }
 
+const QUICK_MAX = 18;
+
+// A receipt link is only useful if the customer's phone can open it from the internet.
+function isPublicOrigin() {
+  const h = location.hostname;
+  return !(
+    h === "localhost" ||
+    h.endsWith(".local") ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+  );
+}
+
 const cartTotal = (lines: CartLine[]) => lines.reduce((s, l) => s + Math.round(l.qty * l.product.sell_price), 0);
 type Sale = {
   id: number;
@@ -69,6 +84,7 @@ type Sale = {
   change_amount: number;
   debt_amount: number;
   payment_method: string;
+  customer_id?: number | null;
   customer_name?: string;
   created_at: string;
   items: Array<{ name: string; qty: number; unit: string; sell_price: number; total: number }>;
@@ -107,10 +123,69 @@ export function KassaScreen() {
   const [freeName, setFreeName] = useState("");
   const [parked, setParked] = useState<ParkedSale[]>([]);
   const [parkedOpen, setParkedOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickDraft, setQuickDraft] = useState<Product[]>([]);
+  const [quickSearch, setQuickSearch] = useState("");
+  const [link, setLink] = useState<{ url: string; svg: string } | null>(null);
+  const [smsPhone, setSmsPhone] = useState("");
+  const [smsState, setSmsState] = useState("");
 
   useEffect(() => {
     setParked(readParked());
+    api<{ user: { role: string } }>("/api/auth/me")
+      .then((d) => setIsAdmin(d.user.role === "admin"))
+      .catch(() => {});
   }, []);
+
+  function loadTop(quick: string | undefined) {
+    const url = quick?.trim() ? `/api/products?ids=${quick}` : "/api/products?top=12";
+    api<{ products: Product[] }>(url)
+      .then((t) => setTop(t.products))
+      .catch(() => {});
+  }
+
+  async function saveQuick(list: Product[]) {
+    const value = list.map((p) => p.id).join(",");
+    try {
+      const d = await api<{ settings: Record<string, string> }>("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ kassa_quick: value }),
+      });
+      setSettings(d.settings);
+      loadTop(value);
+      setQuickOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
+
+  function moveQuick(i: number, dir: -1 | 1) {
+    setQuickDraft((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  async function sendReceiptSms() {
+    if (!link || !receipt) return;
+    setSmsState("Yuborilmoqda...");
+    try {
+      await api("/api/sms", {
+        method: "POST",
+        body: JSON.stringify({
+          phone: smsPhone,
+          message: `${settings.store_name || "Do'kon"}: chek ${receipt.number}, ${som(receipt.total)}. ${link.url}`,
+        }),
+      });
+      setSmsState("SMS yuborildi");
+    } catch (e) {
+      setSmsState(e instanceof Error ? e.message : "Yuborilmadi");
+    }
+  }
 
   function saveParked(list: ParkedSale[]) {
     setParked(list);
@@ -173,9 +248,6 @@ export function KassaScreen() {
   }
 
   async function load(search = q) {
-    api<{ products: Product[] }>("/api/products?top=12")
-      .then((t) => setTop(t.products))
-      .catch(() => {});
     const [p, c, cust, s, sh] = await Promise.all([
       api<{ products: Product[] }>(`/api/products?q=${encodeURIComponent(search)}`),
       api<{ categories: Category[] }>("/api/categories"),
@@ -188,6 +260,7 @@ export function KassaScreen() {
     setCustomers(cust.customers);
     setSettings(s.settings);
     setShift(sh.shift);
+    loadTop(s.settings.kassa_quick);
   }
 
   useEffect(() => {
@@ -378,7 +451,7 @@ export function KassaScreen() {
 
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   function onShortcut(e: KeyboardEvent) {
-    const modalOpen = payOpen || freeOpen || parkedOpen || !!qtyProduct || scanOpen || scaleOpen;
+    const modalOpen = payOpen || freeOpen || parkedOpen || quickOpen || !!qtyProduct || scanOpen || scaleOpen;
     if (receipt && e.key === "Enter") {
       e.preventDefault();
       setReceipt(null);
@@ -437,6 +510,17 @@ export function KassaScreen() {
       setPresetMethod("naqd");
       setReceipt(data.sale);
       setFiscalQr(null);
+      setLink(null);
+      setSmsState("");
+      setSmsPhone(customers.find((c) => c.id === data.sale.customer_id)?.phone || "");
+      if (isPublicOrigin() && data.sale.id) {
+        api<{ url: string; svg: string }>("/api/sales/link", {
+          method: "POST",
+          body: JSON.stringify({ saleId: data.sale.id, origin: location.origin }),
+        })
+          .then(setLink)
+          .catch(() => {});
+      }
       if (settings.fiscal_enabled === "1" && data.sale.id) {
         api<{ qr: string }>(`/api/fiscal?saleId=${data.sale.id}`)
           .then((f) => setFiscalQr(f.qr))
@@ -526,15 +610,33 @@ export function KassaScreen() {
             <Kbd>F2</Kbd>
           </button>
         </form>
-        {!q && categoryId === 0 && top.length ? (
+        {!q && categoryId === 0 && (top.length || isAdmin) ? (
           <div className="mt-3">
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Ko‘p sotiladiganlar</div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+                {settings.kassa_quick ? "Tez tugmalar" : "Ko‘p sotiladiganlar"}
+              </div>
+              {isAdmin ? (
+                <button
+                  onClick={() => {
+                    setQuickDraft(settings.kassa_quick ? top : []);
+                    setQuickSearch("");
+                    setQuickOpen(true);
+                  }}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted hover:text-brand"
+                  title="Tez tugmalarni o‘zingiz tanlang"
+                >
+                  <Settings2 size={13} />
+                  Sozlash
+                </button>
+              ) : null}
+            </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
               {top.map((p, i) => (
                 <button
                   key={p.id}
                   onClick={() => clickProduct(p)}
-                  className={`min-h-16 rounded-2xl bg-brand px-2 py-2 text-left text-white shadow-sm active:scale-[0.98] ${i >= 6 ? "hidden sm:block" : ""}`}
+                  className={`min-h-16 rounded-2xl bg-brand px-2 py-2 text-left text-white shadow-sm active:scale-[0.98] ${i >= 12 ? "hidden xl:block" : i >= 6 ? "hidden sm:block" : ""}`}
                 >
                   <div className="line-clamp-2 text-sm font-bold leading-tight">{p.name}</div>
                   <div className="mt-1 text-xs text-white/80 num">{som(p.sell_price)}</div>
@@ -793,6 +895,83 @@ export function KassaScreen() {
         </div>
       </Modal>
 
+      <Modal open={quickOpen} title="Tez tugmalar" onClose={() => setQuickOpen(false)}>
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            Kassada doim ko‘rinib turadigan mahsulotlarni tanlang (ko‘pi bilan {QUICK_MAX} ta). Tartibini strelkalar bilan
+            o‘zgartiring.
+          </p>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {quickDraft.length === 0 ? (
+              <div className="rounded-xl bg-bg px-3 py-3 text-sm text-muted">
+                Hech narsa tanlanmagan — ko‘p sotiladigan mahsulotlar o‘zi chiqadi.
+              </div>
+            ) : null}
+            {quickDraft.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 rounded-xl bg-bg px-3 py-1.5 text-sm">
+                <span className="w-5 text-xs text-muted num">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                <button className="p-1 text-muted disabled:opacity-30" disabled={i === 0} onClick={() => moveQuick(i, -1)} aria-label="Yuqoriga">
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  className="p-1 text-muted disabled:opacity-30"
+                  disabled={i === quickDraft.length - 1}
+                  onClick={() => moveQuick(i, 1)}
+                  aria-label="Pastga"
+                >
+                  <ArrowDown size={15} />
+                </button>
+                <button
+                  className="p-1 text-muted"
+                  onClick={() => setQuickDraft((prev) => prev.filter((x) => x.id !== p.id))}
+                  aria-label="Olib tashlash"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+          {quickDraft.length < QUICK_MAX ? (
+            <>
+              <Input value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} placeholder="Qo‘shish uchun mahsulot qidiring..." />
+              {quickSearch.trim() ? (
+                <div className="space-y-1">
+                  {products
+                    .filter(
+                      (p) =>
+                        !quickDraft.some((x) => x.id === p.id) &&
+                        (p.name.toLowerCase().includes(quickSearch.trim().toLowerCase()) || p.barcode === quickSearch.trim()),
+                    )
+                    .slice(0, 6)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setQuickDraft((prev) => [...prev, p]);
+                          setQuickSearch("");
+                        }}
+                        className="flex w-full items-center justify-between rounded-xl border border-line px-3 py-2 text-left text-sm hover:border-brand"
+                      >
+                        <span className="truncate">{p.name}</span>
+                        <span className="shrink-0 text-xs text-muted num">{som(p.sell_price)}</span>
+                      </button>
+                    ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1" onClick={() => saveQuick([])}>
+              Avtomatik
+            </Button>
+            <Button className="flex-1" onClick={() => saveQuick(quickDraft)}>
+              Saqlash
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={payOpen} title="To‘lov" onClose={() => setPayOpen(false)}>
         <div className="grid grid-cols-2 gap-2">
           {PAYMENT_METHODS.filter((m) => m.id !== "usd" || usdEnabled).map((m) => (
@@ -924,7 +1103,32 @@ export function KassaScreen() {
                 </div>
               ) : null}
               <div className="pt-2 text-center text-xs">{settings.receipt_footer}</div>
+              {link ? (
+                <div className="pt-2 text-center">
+                  <div
+                    className="mx-auto h-28 w-28 [&>svg]:h-full [&>svg]:w-full"
+                    dangerouslySetInnerHTML={{ __html: link.svg }}
+                  />
+                  <div className="text-[11px]">Elektron chek — telefon kamerasi bilan skanerlang</div>
+                </div>
+              ) : null}
             </div>
+            {link && settings.sms_enabled === "1" ? (
+              <div className="mt-3 flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <Input
+                    type="tel"
+                    value={smsPhone}
+                    onChange={(e) => setSmsPhone(e.target.value)}
+                    placeholder="Xaridor telefoni, +998..."
+                  />
+                </div>
+                <Button variant="ghost" disabled={smsPhone.replace(/\D/g, "").length < 9} onClick={sendReceiptSms}>
+                  Chekni SMS qilish
+                </Button>
+              </div>
+            ) : null}
+            {smsState ? <div className="mt-1 text-xs text-muted">{smsState}</div> : null}
             <div className="mt-4 flex gap-2">
               <Button variant="ghost" className="flex-1" onClick={() => setReceipt(null)}>
                 Yangi savdo

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, Tag } from "lucide-react";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { ImportProducts } from "@/components/ImportProducts";
 import { api } from "@/lib/client";
@@ -314,6 +314,24 @@ export function ProductsScreen() {
             />
           </label>
           <ImportProducts onDone={() => load().catch(() => {})} />
+          <Button
+            variant="ghost"
+            disabled={!products.length}
+            title="Ro‘yxatdagi mahsulotlarga narx yorlig‘i chop etish"
+            onClick={() =>
+              window.open(
+                `/yorliq?ids=${products
+                  .filter((p) => p.active)
+                  .slice(0, 500)
+                  .map((p) => p.id)
+                  .join(",")}`,
+                "_blank",
+              )
+            }
+          >
+            <Tag size={16} />
+            Yorliqlar
+          </Button>
           <Button onClick={startCreate}>Yangi mahsulot</Button>
         </div>
       </div>
@@ -406,7 +424,29 @@ export function ProductsScreen() {
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Shtrix-kod">
-            <Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+            <div className="flex gap-2">
+              <div className="min-w-0 flex-1">
+                <Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+              </div>
+              {!form.barcode.trim() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  title="Shtrix-kodi yo‘q mahsulotga do‘kon ichki kodini berish"
+                  onClick={() =>
+                    api<{ code: string }>("/api/products/barcode")
+                      .then((d) => setForm((f) => ({ ...f, barcode: d.code })))
+                      .catch((e) => setError(e.message))
+                  }
+                >
+                  Yaratish
+                </Button>
+              ) : editing ? (
+                <Button type="button" variant="ghost" onClick={() => window.open(`/yorliq?ids=${editing.id}`, "_blank")}>
+                  Yorliq
+                </Button>
+              ) : null}
+            </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Kategoriya">

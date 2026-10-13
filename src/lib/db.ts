@@ -18,6 +18,7 @@ import { buildFiscalQr, getCurrentBranchId, migratePhase4 } from "./phase4";
 import { assertLicensed } from "./license";
 import { migratePhase5 } from "./phase5";
 import { isBundle, migratePhase6, moveStock, refreshBundle } from "./phase6";
+import { migratePhase7 } from "./phase7";
 
 type SqlRow = Record<string, unknown>;
 
@@ -42,6 +43,7 @@ export function getDb() {
     migratePhase4(db);
     migratePhase5(db);
     migratePhase6(db);
+    migratePhase7(db);
     globalForDb.hisobDb = db;
   }
   ensureFoodCatalog(globalForDb.hisobDb);
@@ -51,6 +53,7 @@ export function getDb() {
   migratePhase4(globalForDb.hisobDb);
   migratePhase5(globalForDb.hisobDb);
   migratePhase6(globalForDb.hisobDb);
+  migratePhase7(globalForDb.hisobDb);
   return globalForDb.hisobDb;
 }
 
