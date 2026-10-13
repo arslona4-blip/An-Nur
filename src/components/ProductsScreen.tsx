@@ -1,11 +1,32 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2, Tag } from "lucide-react";
+import { Camera, Image as ImageIcon, Loader2, Tag } from "lucide-react";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { ImportProducts } from "@/components/ImportProducts";
 import { api } from "@/lib/client";
 import { som, UNITS } from "@/lib/format";
+import { DRINK_SIZES, isDrinkCategory, packSize, withPackSize } from "@/lib/volume";
+
+function SizePicker({ name, show, onPick }: { name: string; show: boolean; onPick: (name: string) => void }) {
+  if (!show) return null;
+  const current = packSize(name);
+  return (
+    <Field label="Hajmi (ichimlik)">
+      <div className="flex flex-wrap gap-2">
+        {DRINK_SIZES.map((size) => {
+          const active = current === packSize(`x ${size}`);
+          return (
+            <Button key={size} type="button" variant={active ? "primary" : "ghost"} onClick={() => onPick(withPackSize(name, size))}>
+              {size}
+            </Button>
+          );
+        })}
+      </div>
+      {!current ? <div className="mt-1 text-sm text-danger">Hajmni tanlang — har bir hajm alohida mahsulot</div> : null}
+    </Field>
+  );
+}
 
 type Product = {
   id: number;
@@ -72,6 +93,7 @@ export function ProductsScreen() {
   const [recognizing, setRecognizing] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [bundleOn, setBundleOn] = useState(false);
   const [parts, setParts] = useState<Part[]>([]);
   const [partsDirty, setPartsDirty] = useState(false);
@@ -201,6 +223,7 @@ export function ProductsScreen() {
     } finally {
       setRecognizing(false);
       if (cameraRef.current) cameraRef.current.value = "";
+      if (galleryRef.current) galleryRef.current.value = "";
     }
   }
 
@@ -228,6 +251,9 @@ export function ProductsScreen() {
         return;
       }
       if (bundleOn && parts.length === 0) throw new Error("To‘plam tarkibiga mahsulot qo‘shing");
+      if (needsSize(form.name, form.category_id, form.unit)) {
+        throw new Error(`Ichimlik hajmini tanlang (${DRINK_SIZES.join(", ")})`);
+      }
       const saved = editing
         ? await api<{ product: Product }>("/api/products", { method: "PUT", body: JSON.stringify(payload) })
         : await api<{ product: Product }>("/api/products", { method: "POST", body: JSON.stringify(payload) });
@@ -248,8 +274,18 @@ export function ProductsScreen() {
     }
   }
 
+  function needsSize(name: string, categoryId: string | number, unit: string) {
+    const category = categories.find((c) => String(c.id) === String(categoryId))?.name;
+    return isDrinkCategory(category) && unit === "dona" && !!name.trim() && !packSize(name);
+  }
+
   async function saveAiDrafts() {
     setError("");
+    const unsized = aiDrafts.find((d) => needsSize(d.name, d.category_id, d.unit));
+    if (unsized) {
+      setError(`«${unsized.name}» — ichimlik hajmini tanlang (${DRINK_SIZES.join(", ")})`);
+      return;
+    }
     setSavingAi(true);
     try {
       for (const d of aiDrafts) {
@@ -370,6 +406,23 @@ export function ProductsScreen() {
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              disabled={recognizing}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) recognizeFromFile(f);
+              }}
+            />
+          </label>
+          <label
+            className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold hover:bg-black/5 ${recognizing ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <ImageIcon size={16} />
+            Galereyadan
+            <input
+              ref={galleryRef}
+              type="file"
+              accept="image/*"
               className="hidden"
               disabled={recognizing}
               onChange={(e) => {
@@ -584,6 +637,11 @@ export function ProductsScreen() {
           <Field label="Nomi">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
+          <SizePicker
+            name={form.name}
+            show={isDrinkCategory(categories.find((c) => String(c.id) === String(form.category_id))?.name)}
+            onPick={(name) => setForm({ ...form, name })}
+          />
           <Field label="Shtrix-kod">
             <div className="flex gap-2">
               <div className="min-w-0 flex-1">
@@ -778,6 +836,7 @@ export function ProductsScreen() {
               <Field label="Nomi">
                 <Input value={d.name} onChange={(e) => updateAiDraft(i, { name: e.target.value })} />
               </Field>
+              <SizePicker name={d.name} show={isDrinkCategory(catLabel)} onPick={(name) => updateAiDraft(i, { name })} />
               <Field label="Kategoriya (toifa)">
                 <Select value={d.category_id} onChange={(e) => updateAiDraft(i, { category_id: e.target.value })}>
                   <option value="">Tanlanmagan</option>

@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { createCategory, getSettings, listCategories } from "./db";
 import { UNITS } from "./format";
 import { renderAdProductPng } from "./product-ad-card";
+import { tidyPackSize } from "./volume";
 
 const PHASE5 = "phase5-v1";
 
@@ -335,7 +336,7 @@ export function resolveCategoryName(
 }
 
 function normalizeProduct(parsed: AiProduct, categories: string[]): Omit<RecognizedProduct, "image_url"> {
-  const name = String(parsed.name || "").trim();
+  const name = tidyPackSize(String(parsed.name || "").trim());
   if (!name) throw new Error("Mahsulot nomi aniqlanmadi — boshqa rasm sinab ko‘ring");
 
   let unit = String(parsed.unit || "dona").toLowerCase();
@@ -382,7 +383,7 @@ FAQAT JSON:
 {
   "products": [
     {
-      "name": "qisqa savdo nomi (brend + mahsulot)",
+      "name": "qisqa savdo nomi: brend + mahsulot + hajm/og‘irlik (Coca-Cola 1.5 L)",
       "unit": "dona|kg|litr|quti|m",
       "buy_price": 0,
       "sell_price": 8000,
@@ -406,6 +407,9 @@ Toifa misollari:
 
 Qoidalar:
 - category_name BO‘SH qolmasin — mahsulot turiga qarab eng mos toifani tanlang.
+- Hajm yoki og‘irlik (0.5 L, 1 L, 1.5 L, 2 L, 500 ml, 100 g, 1 kg) yorliqda, idishda yoki yozuvda ko‘rinsa — nomga ALBATTA qo‘shing. Bir brendning har xil hajmi — ALOHIDA mahsulot, har biri o‘z narxi bilan.
+- Hajm aniq ko‘rinmasa, taxmin qilmang — nomga hajm yozmang.
+- Shisha, banka, quti, paketdagi mahsulot unit = "dona". "litr"/"kg" faqat to‘kib yoki tortib sotiladigan mahsulot uchun.
 - sell_price: rasm/stiker/captiondagi CHAKANA narx (so‘m). "2.500" = 2500, "10 000" = 10000.
 - buy_price noma’lum bo‘lsa 0.
 - box — shu mahsulot fotosining rasmdagi joyi [chap, yuqori, o‘ng, past], 0..1 ulushda. Chat yozuvlari va boshqa mahsulot kirmasin.
