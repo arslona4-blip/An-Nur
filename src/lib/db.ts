@@ -542,24 +542,61 @@ export function changeOwnPassword(id: number, current: string, next: string) {
     .run(bcrypt.hashSync(next, 10), id);
 }
 
-export type Category = { id: number; name: string; color: string; sort: number };
+export type Category = { id: number; name: string; color: string; sort: number; product_count: number };
 
 export function listCategories() {
-  return rows<Category>(getDb().prepare("SELECT * FROM categories ORDER BY sort, id").all());
+  return rows<Category>(
+    getDb()
+      .prepare(
+        "SELECT c.*, (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) AS product_count FROM categories c ORDER BY c.sort, c.id",
+      )
+      .all(),
+  );
+}
+
+function assertCategoryName(name: string, exceptId = 0) {
+  const clean = name.trim();
+  if (!clean) throw new Error("Toifa nomi kerak");
+  if (clean.length > 60) throw new Error("Toifa nomi juda uzun");
+  const dup = getDb()
+    .prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id != ?")
+    .get(clean, exceptId);
+  if (dup) throw new Error("Bunday toifa bor");
+  return clean;
 }
 
 export function createCategory(name: string, color = "#0f766e") {
-  if (!name.trim()) throw new Error("Kategoriya nomi kerak");
+  const clean = assertCategoryName(name);
   getDb()
     .prepare("INSERT INTO categories (name, color, sort) VALUES (?, ?, ?)")
-    .run(name.trim(), color, listCategories().length + 1);
+    .run(clean, color, listCategories().length + 1);
   return listCategories();
 }
 
-export function deleteCategory(id: number) {
-  const used = getDb().prepare("SELECT COUNT(*) AS c FROM products WHERE category_id = ?").get(id) as { c: number };
-  if (used.c > 0) throw new Error("Bu kategoriyada mahsulotlar bor");
-  getDb().prepare("DELETE FROM categories WHERE id = ?").run(id);
+export function renameCategory(id: number, name: string) {
+  if (!getDb().prepare("SELECT id FROM categories WHERE id = ?").get(id)) throw new Error("Toifa topilmadi");
+  getDb().prepare("UPDATE categories SET name = ? WHERE id = ?").run(assertCategoryName(name, id), id);
+  return listCategories();
+}
+
+// moveTo: undefined — refuse while products remain; null — leave them without a category.
+export function deleteCategory(id: number, moveTo?: number | null) {
+  const db = getDb();
+  if (!db.prepare("SELECT id FROM categories WHERE id = ?").get(id)) throw new Error("Toifa topilmadi");
+  const used = (db.prepare("SELECT COUNT(*) AS c FROM products WHERE category_id = ?").get(id) as { c: number }).c;
+  if (used > 0 && moveTo === undefined) throw new Error(`Bu toifada ${used} ta mahsulot bor`);
+  if (moveTo != null && (moveTo === id || !db.prepare("SELECT id FROM categories WHERE id = ?").get(moveTo))) {
+    throw new Error("O‘tkaziladigan toifa noto‘g‘ri");
+  }
+  db.exec("BEGIN");
+  try {
+    if (used > 0) db.prepare("UPDATE products SET category_id = ? WHERE category_id = ?").run(moveTo ?? null, id);
+    db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
   return listCategories();
 }
 

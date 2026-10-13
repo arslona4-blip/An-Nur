@@ -24,7 +24,7 @@ type Product = {
   image_url?: string | null;
   is_bundle?: number;
 };
-type Category = { id: number; name: string };
+type Category = { id: number; name: string; product_count?: number };
 type Part = { product_id: number; name: string; unit: string; qty: number };
 
 type Draft = {
@@ -64,6 +64,10 @@ export function ProductsScreen() {
   const [aiDrafts, setAiDrafts] = useState<Draft[]>([]);
   const [aiOpen, setAiOpen] = useState(false);
   const [catName, setCatName] = useState("");
+  const [catOpen, setCatOpen] = useState(false);
+  const [catEdit, setCatEdit] = useState<{ id: number; name: string } | null>(null);
+  const [catDel, setCatDel] = useState<{ id: number; moveTo: string } | null>(null);
+  const [catError, setCatError] = useState("");
   const [error, setError] = useState("");
   const [recognizing, setRecognizing] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
@@ -278,9 +282,44 @@ export function ProductsScreen() {
 
   async function addCategory() {
     if (!catName.trim()) return;
-    await api("/api/categories", { method: "POST", body: JSON.stringify({ name: catName }) });
-    setCatName("");
-    await load();
+    setCatError("");
+    try {
+      await api("/api/categories", { method: "POST", body: JSON.stringify({ name: catName }) });
+      setCatName("");
+      await load();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Xatolik";
+      if (catOpen) setCatError(msg);
+      else setError(msg);
+    }
+  }
+
+  async function renameCategory() {
+    if (!catEdit) return;
+    setCatError("");
+    try {
+      await api("/api/categories", { method: "PUT", body: JSON.stringify(catEdit) });
+      setCatEdit(null);
+      await load();
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
+
+  async function removeCategory(c: Category) {
+    setCatError("");
+    const count = c.product_count || 0;
+    if (!count && !confirm(`«${c.name}» toifasi o‘chirilsinmi?`)) return;
+    const qs = new URLSearchParams({ id: String(c.id) });
+    if (count) qs.set("moveTo", catDel?.id === c.id ? catDel.moveTo : "0");
+    try {
+      await api(`/api/categories?${qs}`, { method: "DELETE" });
+      setCatDel(null);
+      if (categoryFilter === String(c.id)) setCategoryFilter("");
+      await load(q, categoryFilter === String(c.id) ? "" : categoryFilter);
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : "Xatolik");
+    }
   }
 
   function updateAiDraft(i: number, patch: Partial<Draft>) {
@@ -367,7 +406,96 @@ export function ProductsScreen() {
         <Button variant="ghost" onClick={addCategory}>
           Kategoriya qo‘shish
         </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setCatError("");
+            setCatEdit(null);
+            setCatDel(null);
+            setCatOpen(true);
+          }}
+        >
+          Toifalar
+        </Button>
       </div>
+      <Modal open={catOpen} title="Toifalar" onClose={() => setCatOpen(false)}>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="Yangi toifa nomi" />
+            <Button className="shrink-0" onClick={addCategory} disabled={!catName.trim()}>
+              Qo‘shish
+            </Button>
+          </div>
+          {catError ? <div className="text-sm text-danger">{catError}</div> : null}
+          <div className="max-h-[55vh] space-y-1.5 overflow-y-auto">
+            {categories.length === 0 ? <div className="text-sm text-muted">Toifa yo‘q</div> : null}
+            {categories.map((c) => (
+              <div key={c.id} className="rounded-xl border border-line p-2.5">
+                {catEdit?.id === c.id ? (
+                  <div className="flex gap-2">
+                    <Input
+                      autoFocus
+                      value={catEdit.name}
+                      onChange={(e) => setCatEdit({ id: c.id, name: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") renameCategory();
+                      }}
+                    />
+                    <Button className="shrink-0" onClick={renameCategory}>
+                      Saqlash
+                    </Button>
+                    <Button variant="ghost" className="shrink-0" onClick={() => setCatEdit(null)}>
+                      Bekor
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{c.name}</div>
+                      <div className="text-xs text-muted">{c.product_count || 0} ta mahsulot</div>
+                    </div>
+                    <Button variant="ghost" className="shrink-0 px-3" onClick={() => setCatEdit({ id: c.id, name: c.name })}>
+                      Nomini o‘zgartirish
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="shrink-0 px-3 text-danger"
+                      onClick={() => (c.product_count ? setCatDel({ id: c.id, moveTo: "0" }) : removeCategory(c))}
+                    >
+                      O‘chirish
+                    </Button>
+                  </div>
+                )}
+                {catDel?.id === c.id ? (
+                  <div className="mt-2 space-y-2 rounded-lg bg-red-50 p-2.5 text-sm">
+                    <div>
+                      Bu toifada <b>{c.product_count}</b> ta mahsulot bor. Ular qayerga o‘tsin?
+                    </div>
+                    <Select value={catDel.moveTo} onChange={(e) => setCatDel({ id: c.id, moveTo: e.target.value })}>
+                      <option value="0">Toifasiz qolsin</option>
+                      {categories
+                        .filter((x) => x.id !== c.id)
+                        .map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                    </Select>
+                    <div className="flex gap-2">
+                      <Button variant="danger" className="flex-1" onClick={() => removeCategory(c)}>
+                        O‘chirish
+                      </Button>
+                      <Button variant="ghost" className="flex-1" onClick={() => setCatDel(null)}>
+                        Bekor
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Modal>
       {error ? <div className="text-sm text-danger">{error}</div> : null}
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-left text-sm">
