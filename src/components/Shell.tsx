@@ -53,12 +53,12 @@ export function Shell({
           {home ? (
             <div className="flex min-w-0 items-center gap-3">
               <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={40} height={40} className="h-10 w-10 shrink-0 rounded-xl object-cover" />
-              <div className="min-w-0">
-                <div className="truncate text-lg font-extrabold leading-tight">{storeName}</div>
-                <div className="truncate text-xs text-white/70">
+              <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
+                <span className="truncate text-lg font-extrabold">{storeName}</span>
+                <span className="hidden text-xs text-white/70 sm:inline">
                   {PRODUCT_NAME}
                   {branchName ? ` · ${branchName}` : ""}
-                </div>
+                </span>
               </div>
             </div>
           ) : (
@@ -70,13 +70,13 @@ export function Shell({
                 <LayoutGrid size={18} />
                 <span className="hidden sm:inline">Bosh menyu</span>
               </Link>
-              <div className="min-w-0">
-                <div className="truncate text-lg font-extrabold leading-tight">{current?.label || PRODUCT_NAME}</div>
-                <div className="truncate text-xs text-white/70">{storeName}</div>
+              <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
+                <span className="truncate text-lg font-extrabold">{current?.label || PRODUCT_NAME}</span>
+                <span className="hidden text-xs text-white/70 sm:inline">{storeName}</span>
               </div>
             </>
           )}
-          <div className="ml-auto flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3 border-l border-white/20 pl-3">
             {!home && current?.href !== "/kassa" ? (
               <Link
                 href="/kassa"
@@ -89,9 +89,9 @@ export function Shell({
             <div className="hidden w-44 lg:block">
               <DisplayToggles dark />
             </div>
-            <div className="hidden text-right text-sm md:block">
-              <div className="font-semibold">{user.name}</div>
-              <div className="text-xs text-white/60">{admin ? "Administrator" : "Kassir"}</div>
+            <div className="hidden items-baseline gap-1.5 whitespace-nowrap text-sm md:flex">
+              <span className="font-semibold">{user.name}</span>
+              <span className="text-xs text-white/60">· {admin ? "Administrator" : "Kassir"}</span>
             </div>
             <button
               onClick={logout}
