@@ -226,12 +226,10 @@ export function resolveCategoryName(
     return null;
   }
 
-  if (aiCategory?.trim()) {
-    const fromAi = findCat(aiCategory.trim());
-    if (fromAi) return fromAi;
-  }
-
-  const n = productName.toLowerCase().replace(/['ʼ`]/g, "");
+  const n = productName.toLowerCase().replace(/['ʼ`‘’]/g, "");
+  // short words only as whole words ("un" must not hit "universal"), longer ones as word prefixes
+  const hasWord = (w: string) =>
+    new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${w.length <= 3 ? "(?![\\p{L}])" : ""}`, "u").test(n);
 
   const rules: Array<{ cat: string[]; words: string[]; label: string }> = [
     {
@@ -312,17 +310,40 @@ export function resolveCategoryName(
     {
       label: "Shirinlik",
       cat: ["shirinlik", "shirini", "слад"],
-      words: ["shokolad", "konfet", "pechene", "vafli", "chipsi", "snack", "marmelad", "muzqaymoq", "tort"],
+      words: ["shokolad", "konfet", "pechene", "vafli", "marmelad", "muzqaymoq", "tort"],
+    },
+    {
+      label: "Gazaklar",
+      cat: ["gazaklar", "gazak", "snek", "снеки", "shirinlik", "слад"],
+      words: [
+        "semechk",
+        "семечк",
+        "pista",
+        "yongoq",
+        "yong'oq",
+        "арахис",
+        "chips",
+        "чипс",
+        "kurt",
+        "qurt",
+        "suxarik",
+        "сухарик",
+        "kirieshki",
+        "кириешки",
+        "popkorn",
+        "попкорн",
+        "snack",
+      ],
     },
     {
       label: "Kanselyariya",
-      cat: ["kanselyariya", "stationery", "канц"],
+      cat: ["kanselyariya", "kanstovar", "kanstovarlar", "stationery", "канц"],
       words: ["marker", "ruchka", "qalam", "daftar", "jurnal", "tetrad", "highlighter", "stapler", "skotch", "qogoz"],
     },
   ];
 
   for (const rule of rules) {
-    if (rule.words.some((w) => n.includes(w))) {
+    if (rule.words.some((w) => hasWord(w.replace(/['ʼ`‘’]/g, "")))) {
       const hit = findCat(...rule.cat, rule.label);
       if (hit) return hit;
       const fresh = listCategories().find((c) => c.name.toLowerCase() === rule.label.toLowerCase());
@@ -332,6 +353,7 @@ export function resolveCategoryName(
     }
   }
 
+  if (aiCategory?.trim()) return findCat(aiCategory.trim());
   return null;
 }
 
@@ -387,7 +409,7 @@ FAQAT JSON:
       "unit": "dona|kg|litr|quti|m",
       "buy_price": 0,
       "sell_price": 8000,
-      "category_name": "MAJBURIY — quyidagi ro‘yxatdan ANIQ bitta nom",
+      "category_name": "quyidagi ro‘yxatdan ANIQ bitta nom yoki null",
       "box": [0.1, 0.05, 0.9, 0.4]
     }
   ]
@@ -403,10 +425,11 @@ Toifa misollari:
 - Sut, yogurt, pishloq → Sut mahsulotlari
 - Go'sht, tuxum, kolbasa → Go'sht-tuxum
 - Shokolad, konfet, pechene → Shirinlik
+- Semechka, chips, yong‘oq, pista, qurt, suxarik → Gazaklar (yoki Shirinlik)
 - Marker, daftar, ruchka → Kanselyariya (agar bor bo‘lsa)
 
 Qoidalar:
-- category_name BO‘SH qolmasin — mahsulot turiga qarab eng mos toifani tanlang.
+- category_name — mahsulot turiga MOS toifa. Ro‘yxatda mosi bo‘lmasa null yozing; oziq-ovqatni hech qachon kanselyariya, xo‘jalik kabi boshqa turdagi toifaga qo‘ymang.
 - Hajm yoki og‘irlik (0.5 L, 1 L, 1.5 L, 2 L, 500 ml, 100 g, 1 kg) yorliqda, idishda yoki yozuvda ko‘rinsa — nomga ALBATTA qo‘shing. Bir brendning har xil hajmi — ALOHIDA mahsulot, har biri o‘z narxi bilan.
 - Hajm aniq ko‘rinmasa, taxmin qilmang — nomga hajm yozmang.
 - Shisha, banka, quti, paketdagi mahsulot unit = "dona". "litr"/"kg" faqat to‘kib yoki tortib sotiladigan mahsulot uchun.
