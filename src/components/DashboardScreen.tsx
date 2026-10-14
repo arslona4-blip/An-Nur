@@ -124,9 +124,6 @@ export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
               </div>
             ) : null}
           </div>
-          <Link href="/kassa" className="mt-4 block rounded-xl bg-brand py-3 text-center text-sm font-semibold text-white">
-            Kassani ochish
-          </Link>
         </Card>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
