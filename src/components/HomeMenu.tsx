@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { ChevronRight, ShoppingCart } from "lucide-react";
 import { DisplayToggles } from "@/components/DisplayPrefs";
-import { menuFor } from "@/lib/menu";
+import { menuFor, PANEL_LINKS } from "@/lib/menu";
 
 export function HomeMenu({ role, name }: { role: string; name: string }) {
   const groups = menuFor(role);
+  const panel = PANEL_LINKS.filter((l) => l.roles.includes(role));
   return (
     <div className="space-y-6">
       <Link
@@ -23,31 +24,56 @@ export function HomeMenu({ role, name }: { role: string; name: string }) {
         <ChevronRight size={32} className="ml-auto shrink-0 opacity-70 transition group-hover:translate-x-1" />
       </Link>
 
-      {groups.map((g) => (
-        <section key={g.title}>
-          <h2 className="mb-2.5 px-1 text-sm font-bold uppercase tracking-wider text-muted">{g.title}</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            {g.items.map((item) => {
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <section key={g.title} className="flex flex-col gap-2 md:flex-row md:items-stretch md:gap-3">
+            <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-muted md:flex md:w-28 md:shrink-0 md:items-center md:px-0 md:text-xs">
+              {g.title}
+            </h2>
+            <div className="flex flex-1 gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-[repeat(4,170px)] md:overflow-visible md:pb-0">
+              {g.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`${g.tile} relative flex min-h-24 min-w-[112px] shrink-0 flex-col md:min-w-0 justify-between overflow-hidden rounded-2xl p-3 text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]`}
+                  >
+                    <span className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-white/10" />
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/20">
+                      <Icon size={20} />
+                    </span>
+                    <span className="mt-2 text-sm font-bold leading-tight">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {panel.length ? (
+        <section className="md:hidden">
+          <h2 className="mb-2.5 px-1 text-sm font-bold uppercase tracking-wider text-muted">Boshqaruv</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {panel.map((item) => {
               const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`${g.tile} group relative flex min-h-28 flex-col justify-between overflow-hidden rounded-2xl p-4 text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]`}
+                  className="flex min-h-20 items-center gap-3 rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 p-4 font-bold text-white shadow-md"
                 >
-                  <span className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-white/10" />
-                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/20">
-                    <Icon size={22} />
-                  </span>
-                  <span className="mt-3 text-base font-bold leading-tight">{item.label}</span>
+                  <Icon size={22} />
+                  {item.label}
                 </Link>
               );
             })}
           </div>
         </section>
-      ))}
+      ) : null}
 
-      <div className="max-w-xs lg:hidden">
+      <div className="max-w-xs md:hidden">
         <DisplayToggles />
       </div>
     </div>

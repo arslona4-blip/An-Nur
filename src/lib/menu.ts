@@ -74,17 +74,15 @@ export const MENU: MenuGroup[] = [
       { href: "/pul", label: "Pul aylanmasi", icon: Wallet, roles: ADMIN },
     ],
   },
-  {
-    title: "Boshqaruv",
-    tile: "bg-gradient-to-br from-slate-500 to-slate-700",
-    items: [
-      { href: "/filiallar", label: "Filiallar", icon: Building2, roles: ADMIN },
-      { href: "/sozlamalar", label: "Sozlamalar", icon: Settings, roles: ADMIN },
-    ],
-  },
 ];
 
-export const ALL_ITEMS: MenuItem[] = [KASSA, ...MENU.flatMap((g) => g.items)];
+// shown in the left panel, not as tiles
+export const PANEL_LINKS: MenuItem[] = [
+  { href: "/filiallar", label: "Filiallar", icon: Building2, roles: ADMIN },
+  { href: "/sozlamalar", label: "Sozlamalar", icon: Settings, roles: ADMIN },
+];
+
+export const ALL_ITEMS: MenuItem[] = [KASSA, ...MENU.flatMap((g) => g.items), ...PANEL_LINKS];
 
 export function menuFor(role: string) {
   return MENU.map((g) => ({ ...g, items: g.items.filter((i) => i.roles.includes(role)) })).filter((g) => g.items.length);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { api } from "@/lib/client";
 import { expiryLabel, methodLabel, som, tashkentDateTime } from "@/lib/format";
@@ -26,7 +26,7 @@ type Dash = {
   settings: Record<string, string>;
 };
 
-export function DashboardScreen() {
+export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
   const [data, setData] = useState<Dash | null>(null);
   const [error, setError] = useState("");
 
@@ -36,8 +36,17 @@ export function DashboardScreen() {
       .catch((e) => setError(e.message));
   }, []);
 
-  if (error) return <div className="text-danger">{error}</div>;
-  if (!data) return <div className="text-muted">Yuklanmoqda...</div>;
+  if (error || !data) {
+    const status = error ? <div className="text-danger">{error}</div> : <div className="text-muted">Yuklanmoqda...</div>;
+    return menu ? (
+      <div className="space-y-6">
+        {menu}
+        {status}
+      </div>
+    ) : (
+      status
+    );
+  }
 
   const max = Math.max(...data.chart.map((c) => c.total), 1);
   const cards = [
@@ -47,21 +56,33 @@ export function DashboardScreen() {
     { label: "Mijoz qarzi", value: som(data.debts), sub: "haqdorlar" },
   ].filter((c) => c !== null);
 
+  const cardList = cards.map((c) => (
+    <Card key={c.label} className="p-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{c.label}</div>
+      <div className="mt-2 text-2xl font-extrabold num">{c.value}</div>
+      <div className="mt-1 text-xs text-muted">{c.sub}</div>
+    </Card>
+  ));
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">{data.settings.store_name}</h1>
-        <p className="text-sm text-muted">Bugungi holat — raqamlar jonli yangilanadi</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((c) => (
-          <Card key={c.label} className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted">{c.label}</div>
-            <div className="mt-2 text-2xl font-extrabold num">{c.value}</div>
-            <div className="mt-1 text-xs text-muted">{c.sub}</div>
-          </Card>
-        ))}
-      </div>
+      {menu ? (
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          <div className="min-w-0">{menu}</div>
+          <div className="lg:w-64 lg:shrink-0">
+            <div className="mb-2.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Bugungi holat</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">{cardList}</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div>
+            <h1 className="text-2xl font-extrabold">{data.settings.store_name}</h1>
+            <p className="text-sm text-muted">Bugungi holat — raqamlar jonli yangilanadi</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cardList}</div>
+        </>
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-4 lg:col-span-2">
           <div className="mb-4 font-bold">So‘nggi 7 kun savdosi</div>

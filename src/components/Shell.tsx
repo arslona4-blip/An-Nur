@@ -8,7 +8,7 @@ import { type ReactNode, useEffect } from "react";
 import type { SessionUser } from "@/lib/auth";
 import { DisplayToggles } from "@/components/DisplayPrefs";
 import { PRODUCT_LOGO, PRODUCT_NAME } from "@/lib/brand";
-import { ALL_ITEMS, isActive } from "@/lib/menu";
+import { ALL_ITEMS, PANEL_LINKS, isActive } from "@/lib/menu";
 
 export function Shell({
   user,
@@ -47,65 +47,79 @@ export function Shell({
   ];
 
   return (
-    <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="sticky top-0 z-20 bg-gradient-to-r from-brand-dark via-brand-dark to-brand text-white shadow-md">
-        <div className="flex items-center gap-3 px-3 py-2.5 md:px-4">
-          {home ? (
-            <div className="flex min-w-0 items-center gap-3">
-              <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={40} height={40} className="h-10 w-10 shrink-0 rounded-xl object-cover" />
-              <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
-                <span className="truncate text-lg font-extrabold">{storeName}</span>
-                <span className="hidden text-xs text-white/70 sm:inline">
-                  {PRODUCT_NAME}
-                  {branchName ? ` · ${branchName}` : ""}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <>
-              <Link
-                href="/"
-                className="flex shrink-0 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold hover:bg-white/25"
-              >
-                <LayoutGrid size={18} />
-                <span className="hidden sm:inline">Bosh menyu</span>
-              </Link>
-              <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
-                <span className="truncate text-lg font-extrabold">{current?.label || PRODUCT_NAME}</span>
-                <span className="hidden text-xs text-white/70 sm:inline">{storeName}</span>
-              </div>
-            </>
-          )}
-          <div className="flex shrink-0 items-center gap-3 border-l border-white/20 pl-3">
-            {!home && current?.href !== "/kassa" ? (
-              <Link
-                href="/kassa"
-                className="hidden items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-extrabold text-brand-dark shadow hover:bg-white/90 md:flex"
-              >
-                <ShoppingCart size={18} />
-                Kassa
-              </Link>
-            ) : null}
-            <div className="hidden w-44 lg:block">
-              <DisplayToggles dark />
-            </div>
-            <div className="hidden items-baseline gap-1.5 whitespace-nowrap text-sm md:flex">
-              <span className="font-semibold">{user.name}</span>
-              <span className="text-xs text-white/60">· {admin ? "Administrator" : "Kassir"}</span>
-            </div>
-            <button
-              onClick={logout}
-              title="Chiqish"
-              className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Chiqish</span>
-            </button>
-          </div>
+    <div className="flex min-h-dvh bg-bg">
+      <aside className="sticky top-0 hidden h-dvh w-[210px] shrink-0 flex-col gap-3 bg-gradient-to-b from-brand-dark to-brand p-4 text-white md:flex">
+        <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={48} height={48} className="h-12 w-12 rounded-xl object-cover" />
+        <div>
+          <div className="text-lg font-extrabold leading-tight">{storeName}</div>
+          <div className="mt-1 text-xs text-white/70">{PRODUCT_NAME}</div>
+          {branchName ? <div className="text-xs text-white/70">{branchName}</div> : null}
         </div>
-      </header>
 
-      <main className="w-full flex-1 p-4 pb-28 md:p-6 md:pb-6">{forbidden ? null : children}</main>
+        <div className="mt-2 flex flex-col gap-2">
+          <Link
+            href="/"
+            className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${
+              home ? "bg-white/25" : "bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            <LayoutGrid size={18} />
+            Bosh menyu
+          </Link>
+          <Link
+            href="/kassa"
+            className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-sm font-extrabold text-brand-dark shadow hover:bg-white/90"
+          >
+            <ShoppingCart size={18} />
+            Kassa
+          </Link>
+          {PANEL_LINKS.filter((l) => l.roles.includes(user.role)).map((l) => {
+            const Icon = l.icon;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${
+                  isActive(path, l.href) ? "bg-white/25" : "bg-white/10 hover:bg-white/20"
+                }`}
+              >
+                <Icon size={18} />
+                {l.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        <DisplayToggles dark />
+        <div className="border-t border-white/20 pt-3 text-sm">
+          <div className="font-semibold">{user.name}</div>
+          <div className="text-xs text-white/60">{admin ? "Administrator" : "Kassir"}</div>
+        </div>
+        <button
+          onClick={logout}
+          className="flex items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 text-sm hover:bg-white/20"
+        >
+          <LogOut size={16} />
+          Chiqish
+        </button>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex items-center gap-3 bg-gradient-to-r from-brand-dark to-brand px-3 py-2.5 text-white shadow-md md:hidden">
+          <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={36} height={36} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+          <div className="min-w-0">
+            <div className="truncate font-extrabold leading-tight">{home ? storeName : current?.label || PRODUCT_NAME}</div>
+            <div className="truncate text-[11px] text-white/70">{home ? branchName || PRODUCT_NAME : storeName}</div>
+          </div>
+          <button onClick={logout} title="Chiqish" className="ml-auto grid h-10 w-10 place-items-center rounded-xl bg-white/10">
+            <LogOut size={18} />
+          </button>
+        </header>
+
+        <main className="w-full flex-1 p-4 pb-28 md:p-6 md:pb-6">{forbidden ? null : children}</main>
+      </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] md:hidden">
         {bottom.map((item) => {
