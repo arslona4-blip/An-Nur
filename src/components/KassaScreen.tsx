@@ -659,10 +659,11 @@ export function KassaScreen() {
             </div>
           </div>
         ) : null}
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
+        <div className="mt-3 flex flex-col gap-2 md:min-h-0 md:flex-1 md:flex-row">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-1 md:w-40 md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pb-0 md:pr-1">
           <button
             onClick={() => setCategoryId(0)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 md:w-full md:whitespace-normal md:rounded-lg md:px-3 md:py-1.5 md:text-left md:leading-tight ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
           >
             Hammasi
           </button>
@@ -670,14 +671,15 @@ export function KassaScreen() {
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
+              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 md:w-full md:whitespace-normal md:rounded-lg md:px-3 md:py-1.5 md:text-left md:leading-tight ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
             >
               {c.name}
             </button>
           ))}
         </div>
-        {error ? <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
-        <div className="mt-2 grid auto-rows-min grid-cols-3 gap-1.5 pb-2 sm:grid-cols-4 md:min-h-0 md:flex-1 md:overflow-y-auto lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+        <div className="flex min-w-0 flex-1 flex-col md:min-h-0">
+        {error ? <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
+        <div className="grid auto-rows-min grid-cols-3 gap-1.5 pb-2 sm:grid-cols-4 md:min-h-0 md:flex-1 md:overflow-y-auto lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {filtered.map((p) => {
             const low = isLowStock(p);
             return (
@@ -699,6 +701,8 @@ export function KassaScreen() {
             </button>
             );
           })}
+        </div>
+        </div>
         </div>
       </section>
 
