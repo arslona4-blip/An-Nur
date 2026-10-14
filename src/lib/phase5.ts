@@ -503,6 +503,55 @@ Qoidalar:
 
 export type ListedProduct = Omit<RecognizedProduct, "image_url" | "source_image_url"> & { stock: number };
 
+/** Ovozdan kelgan xom matn → har qatorda bitta mahsulot: "Coca-Cola 1,5 L, 14 000 so‘m, 24 ta" */
+export async function tidyDictation(text: string): Promise<{ lines: string[] }> {
+  const key = openaiKey();
+  if (!key) throw new Error("OpenAI API kaliti sozlanmagan — Sozlamalar → AI mahsulot");
+  const clean = text.trim().slice(0, 6000);
+  if (!clean) return { lines: [] };
+
+  const prompt = `Do‘kon egasi mahsulotlarini ovoz bilan aytdi, brauzer uni matnga o‘girdi (xatolar, pauzadagi nuqtalar, takrorlar bor).
+Uni toza ro‘yxatga aylantiring: HAR BIR MAHSULOT ALOHIDA QATOR, ko‘rinishi: "Nomi hajmi, narxi so‘m, miqdori".
+- Faqat lotin harflari. Kirillni lotinga o‘giring.
+- Brend nomlarini rasmiy imlosida yozing: "koka kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers".
+- Sonlarni faqat raqam bilan: "bir yarim litr" yoki "1. Yarim litr" → "1,5 L"; "yarim litr" → "0,5 L"; "o‘n to‘rt ming" yoki "14. Mingdan" → "14 000 so‘m"; "yigirma to‘rtta" → "24 ta"; "5 kilo" → "5 kg".
+- Pauzada bo‘lingan bo‘laklarni bitta mahsulotga birlashtiring; ketma-ket takrorlangan nomni bir marta yozing.
+- "a", "i", "xo‘sh", "yana", "keyin" kabi so‘zlarni va mahsulotga aloqasi yo‘q gaplarni tashlang.
+- Aytilmagan narx yoki miqdorni o‘ylab topmang — o‘sha qismni yozmang. Oxirgi mahsulot chala bo‘lsa ham borini yozing.
+FAQAT JSON: {"lines":["Coca-Cola 1,5 L, 14 000 so‘m, 24 ta","Non, 4 000 so‘m, 25 ta"]}
+
+Matn:
+"""
+${clean}
+"""`;
+
+  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: { message?: string };
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  if (!res.ok) throw new Error(data.error?.message || "OpenAI so‘rovi muvaffaqiyatsiz");
+  let parsed: { lines?: unknown[] };
+  try {
+    parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+  } catch {
+    throw new Error("AI javobini o‘qib bo‘lmadi");
+  }
+  const lines = (parsed.lines || []).map((l) => String(l ?? "").trim()).filter(Boolean).slice(0, 200);
+  return { lines };
+}
+
 /** Yozilgan yoki aytilgan ro‘yxatdan mahsulotlar: "Coca-Cola 1.5 l 14 ming 20 ta, non 4000" */
 export async function parseProductList(text: string): Promise<{ products: ListedProduct[] }> {
   const key = openaiKey();
@@ -523,7 +572,7 @@ Har bir mahsulotni ajrating. FAQAT JSON:
 
 Qoidalar:
 - name: qisqa savdo nomi, brend + mahsulot + hajm/og‘irlik. Imlo xatolarini tuzating, bosh harf bilan yozing ("koka kola bir yarim litr" → "Coca-Cola 1.5 L").
-- Narxlar so‘mda: "14 ming" = 14000, "2,5 ming" = 2500, "o‘n ikki ming besh yuz" = 12500, "1.2 mln" = 1200000.
+- Narxlar so‘mda: "14 ming" = 14000, "14 000 so‘m" = 14000, "2,5 ming" = 2500, "o‘n ikki ming besh yuz" = 12500, "1.2 mln" = 1200000.
 - Bitta narx aytilsa — bu sotish narxi (sell_price). "olish/kelish/tan narxi" — buy_price, "sotish" — sell_price. Noma’lum narx 0.
 - stock: "20 ta", "5 kilo", "3 quti", "yigirmata" — miqdor. Aytilmasa 0.
 - unit faqat: ${UNITS.join(", ")}. Shisha, banka, paket, dona sotiladigan — "dona"; tortib sotiladigan (kilo) — "kg"; to‘kib sotiladigan — "litr".

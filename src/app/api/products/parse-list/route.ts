@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin } from "@/lib/auth";
 import { listCategories } from "@/lib/db";
-import { parseProductList } from "@/lib/phase5";
+import { parseProductList, tidyDictation } from "@/lib/phase5";
 
 export const runtime = "nodejs";
 
@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   try {
     await requireAdmin();
     const body = await req.json();
+    if (body.mode === "tidy") return NextResponse.json(await tidyDictation(String(body.text || "")));
     const { products: listed } = await parseProductList(String(body.text || ""));
     const categories = listCategories();
     const products = listed.map((p) => {

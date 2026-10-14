@@ -29,7 +29,7 @@ function speechRecognition(): (new () => Recognition) | null {
 }
 
 // Chrome sends speech to Google; on phones the keyboard mic does the same job, so this button is only a shortcut.
-function DictateButton({ onText }: { onText: (text: string) => void }) {
+function DictateButton({ onStart, onText, onStop, busy }: { onStart: () => void; onText: (text: string) => void; onStop: () => void; busy: boolean }) {
   const [rec, setRec] = useState<Recognition | null>(null);
   const [err, setErr] = useState("");
   const Ctor = speechRecognition();
@@ -46,8 +46,12 @@ function DictateButton({ onText }: { onText: (text: string) => void }) {
       }
     };
     r.onerror = (e) => setErr(e.error === "not-allowed" ? "Mikrofonga ruxsat bering" : "Ovozni eshitib bo‘lmadi");
-    r.onend = () => setRec(null);
+    r.onend = () => {
+      setRec(null);
+      onStop();
+    };
     setErr("");
+    onStart();
     r.start();
     setRec(r);
   }
@@ -59,6 +63,11 @@ function DictateButton({ onText }: { onText: (text: string) => void }) {
         {rec ? "To‘xtatish" : "Aytib berish"}
       </Button>
       {rec ? <span className="text-sm text-danger">Eshityapman… har mahsulotni «nomi, narxi, nechta» tartibida ayting</span> : null}
+      {busy ? (
+        <span className="flex items-center gap-1 text-sm text-muted">
+          <Loader2 size={14} className="animate-spin" /> AI tozalayapti…
+        </span>
+      ) : null}
       {err ? <span className="text-sm text-danger">{err}</span> : null}
     </div>
   );
@@ -152,6 +161,9 @@ export function ProductsScreen() {
   const [listText, setListText] = useState("");
   const [listBusy, setListBusy] = useState(false);
   const [listError, setListError] = useState("");
+  const [tidying, setTidying] = useState(false);
+  const dictRef = useRef({ base: "", raw: "", lines: [] as string[], tidiedLen: 0, pending: 0 });
+  const tidyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [savingAi, setSavingAi] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -302,6 +314,52 @@ export function ProductsScreen() {
       category_id: item.category_id || "",
       image_url: item.image_url || "",
     }));
+  }
+
+  function showDictation() {
+    const d = dictRef.current;
+    const rest = d.raw.slice(d.tidiedLen).trim();
+    setListText([d.base, ...d.lines, rest].filter(Boolean).join("\n"));
+  }
+
+  function dictStart() {
+    clearTimeout(tidyTimer.current);
+    dictRef.current = { base: listText.trimEnd(), raw: "", lines: [], tidiedLen: 0, pending: 0 };
+  }
+
+  function dictPiece(text: string) {
+    const d = dictRef.current;
+    const piece = text.trim();
+    if (!piece) return;
+    d.raw = d.raw ? `${d.raw} ${piece}` : piece;
+    showDictation();
+    clearTimeout(tidyTimer.current);
+    tidyTimer.current = setTimeout(tidyNow, 900);
+  }
+
+  // Pauses split one product into fragments, so the whole session is re-tidied each time, not just the new piece.
+  async function tidyNow() {
+    clearTimeout(tidyTimer.current);
+    const d = dictRef.current;
+    const raw = d.raw;
+    if (!raw.trim() || raw.length <= d.tidiedLen) return;
+    d.pending++;
+    setTidying(true);
+    try {
+      const r = await api<{ lines: string[] }>("/api/products/parse-list", {
+        method: "POST",
+        body: JSON.stringify({ mode: "tidy", text: raw }),
+      });
+      if (dictRef.current === d && raw.length > d.tidiedLen) {
+        d.lines = r.lines;
+        d.tidiedLen = raw.length;
+        showDictation();
+      }
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Xatolik");
+    } finally {
+      if (--d.pending === 0) setTidying(false);
+    }
   }
 
   async function parseList() {
@@ -945,18 +1003,9 @@ export function ProductsScreen() {
             onChange={(e) => setListText(e.target.value)}
             placeholder={"Coca-Cola 1,5 litr 14 ming, 24 ta\nNon 4000, 30 ta\nShakar 1 kg olish 11 ming sotish 13 ming, 10 kilo\nPista 5 ming 15 ta"}
           />
-          <DictateButton
-            onText={(t) =>
-              setListText((prev) => {
-                const piece = t.replace(/[.!?…]+$/u, "").trim();
-                const base = prev.trimEnd();
-                if (!piece || base.toLowerCase().endsWith(piece.toLowerCase())) return prev;
-                return base ? `${base} ${piece}` : piece;
-              })
-            }
-          />
+          <DictateButton onStart={dictStart} onText={dictPiece} onStop={() => tidyNow()} busy={tidying} />
           {listError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{listError}</div> : null}
-          <Button className="w-full" disabled={listBusy || !listText.trim()} onClick={parseList}>
+          <Button className="w-full" disabled={listBusy || tidying || !listText.trim()} onClick={parseList}>
             {listBusy ? <Loader2 size={16} className="animate-spin" /> : null}
             {listBusy ? "AI jadval qilyapti..." : "AI bilan jadval qilish"}
           </Button>
