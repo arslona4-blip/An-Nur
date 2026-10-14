@@ -571,7 +571,7 @@ export function KassaScreen() {
   }
 
   return (
-    <div className="-m-4 -mb-28 flex h-[calc(100dvh-3.75rem)] flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:-m-6 md:mb-0 md:h-dvh md:pb-0">
+    <div className="-m-4 flex h-[calc(100dvh-3.75rem)] flex-col pb-[calc(1rem+env(safe-area-inset-bottom))] md:-m-6 md:h-dvh md:pb-0">
       {!shift ? (
         <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           Smena ochilmagan.{" "}
@@ -700,11 +700,13 @@ export function KassaScreen() {
         </div>
       </section>
 
-      <aside className="flex max-h-[44%] w-full shrink-0 flex-col border-t-2 border-brand/30 bg-white shadow-[0_-6px_16px_rgba(0,0,0,0.06)] md:max-h-none md:w-[380px] md:border-l md:border-t-0 md:shadow-none">
+      <aside className="flex max-h-[56%] w-full shrink-0 flex-col border-t-2 border-brand/30 bg-white shadow-[0_-6px_16px_rgba(0,0,0,0.06)] md:max-h-none md:w-[380px] md:border-l md:border-t-0 md:shadow-none">
         <div className="border-b border-line p-3 md:p-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="mb-1.5 flex items-center justify-between gap-2 md:mb-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">Savatcha</div>
+              <div className="text-sm font-semibold">
+                Savatcha{cart.length ? <span className="ml-1 text-muted">({cart.length})</span> : null}
+              </div>
               <button
                 onClick={openDisplay}
                 className="hidden items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-brand hover:text-brand md:flex"
@@ -802,7 +804,7 @@ export function KassaScreen() {
               Avto chegirma: {appliedRules.join(", ")} (−{som(autoDiscount + lineDiscountTotal)})
             </div>
           ) : null}
-          <div className="flex justify-between text-sm text-muted">
+          <div className={`justify-between text-sm text-muted ${subtotal !== total ? "flex" : "hidden md:flex"}`}>
             <span>Jami</span>
             <span className="num">{som(subtotal)}</span>
           </div>

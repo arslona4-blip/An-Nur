@@ -24,6 +24,8 @@ export function Shell({
   const path = usePathname();
   const router = useRouter();
   const home = path === "/";
+  // the till has its own pay bar at the bottom; the tab bar would cover it on phones
+  const onKassa = path.startsWith("/kassa");
   const current = ALL_ITEMS.find((n) => isActive(path, n.href));
   const forbidden = ALL_ITEMS.some((n) => path.startsWith(n.href) && !n.roles.includes(user.role));
   const admin = user.role === "admin";
@@ -108,7 +110,13 @@ export function Shell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex items-center gap-3 bg-gradient-to-r from-brand-dark to-brand px-3 py-2.5 text-white shadow-md md:hidden">
-          <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={36} height={36} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+          {home ? (
+            <Image src={PRODUCT_LOGO} alt={PRODUCT_NAME} width={36} height={36} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+          ) : (
+            <Link href="/" title="Bosh menyu" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/15">
+              <LayoutGrid size={20} />
+            </Link>
+          )}
           <div className="min-w-0">
             <div className="truncate font-extrabold leading-tight">{home ? storeName : current?.label || PRODUCT_NAME}</div>
             <div className="truncate text-[11px] text-white/70">{home ? branchName || PRODUCT_NAME : storeName}</div>
@@ -118,10 +126,14 @@ export function Shell({
           </button>
         </header>
 
-        <main className="w-full flex-1 p-4 pb-28 md:p-6 md:pb-6">{forbidden ? null : children}</main>
+        <main className={`w-full flex-1 p-4 md:p-6 md:pb-6 ${onKassa ? "pb-4" : "pb-28"}`}>{forbidden ? null : children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] md:hidden">
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-20 grid-cols-5 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] md:hidden ${
+          onKassa ? "hidden" : "grid"
+        }`}
+      >
         {bottom.map((item) => {
           const Icon = item.icon;
           const active = isActive(path, item.href);
