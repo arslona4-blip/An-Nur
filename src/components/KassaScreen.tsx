@@ -571,7 +571,7 @@ export function KassaScreen() {
   }
 
   return (
-    <div className="-m-4 -mb-28 flex h-[calc(100dvh-3.5rem)] flex-col pb-20 md:-m-6 md:mb-0 md:h-dvh md:pb-0">
+    <div className="-m-4 -mb-28 flex h-[calc(100dvh-3.75rem)] flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:-m-6 md:mb-0 md:h-dvh md:pb-0">
       {!shift ? (
         <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           Smena ochilmagan.{" "}
@@ -581,7 +581,7 @@ export function KassaScreen() {
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col p-4">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-3 md:overflow-hidden md:p-4">
         <form onSubmit={onSearchSubmit} className="relative flex gap-2">
           <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-3 text-muted" size={18} />
@@ -676,7 +676,7 @@ export function KassaScreen() {
           ))}
         </div>
         {error ? <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
-        <div className="mt-3 grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pb-2 sm:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-3 grid auto-rows-min grid-cols-2 gap-2 pb-2 sm:grid-cols-3 md:min-h-0 md:flex-1 md:overflow-y-auto xl:grid-cols-4">
           {filtered.map((p) => {
             const low = isLowStock(p);
             return (
@@ -700,8 +700,8 @@ export function KassaScreen() {
         </div>
       </section>
 
-      <aside className="flex max-h-[46%] w-full shrink-0 flex-col border-t border-line bg-white md:max-h-none md:w-[380px] md:border-l md:border-t-0">
-        <div className="border-b border-line p-4">
+      <aside className="flex max-h-[44%] w-full shrink-0 flex-col border-t-2 border-brand/30 bg-white shadow-[0_-6px_16px_rgba(0,0,0,0.06)] md:max-h-none md:w-[380px] md:border-l md:border-t-0 md:shadow-none">
+        <div className="border-b border-line p-3 md:p-4">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div className="text-sm font-semibold">Savatcha</div>
@@ -736,7 +736,7 @@ export function KassaScreen() {
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {cart.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted">Mahsulot qo‘shing yoki shtrix-kodni skanerlang</div>
+            <div className="py-3 text-center text-sm text-muted md:py-10">Mahsulot qo‘shing yoki shtrix-kodni skanerlang</div>
           ) : (
             cart.map((line) => (
               <div key={line.product.id} className="flex items-center gap-2 rounded-xl bg-bg p-2">
@@ -787,7 +787,7 @@ export function KassaScreen() {
             ))
           )}
         </div>
-        <div className="space-y-2 border-t border-line p-4">
+        <div className="space-y-1.5 border-t border-line p-3 md:space-y-2 md:p-4">
           <label className="flex items-center justify-between gap-3 text-sm">
             Chegirma
             <Input
