@@ -465,3 +465,76 @@ Qoidalar:
 
   return { products };
 }
+
+export type ListedProduct = Omit<RecognizedProduct, "image_url" | "source_image_url"> & { stock: number };
+
+/** Yozilgan yoki aytilgan ro‘yxatdan mahsulotlar: "Coca-Cola 1.5 l 14 ming 20 ta, non 4000" */
+export async function parseProductList(text: string): Promise<{ products: ListedProduct[] }> {
+  const key = openaiKey();
+  if (!key) throw new Error("OpenAI API kaliti sozlanmagan — Sozlamalar → AI mahsulot");
+  const clean = text.trim().slice(0, 6000);
+  if (!clean) throw new Error("Ro‘yxatni yozing yoki ayting");
+  const categories = listCategories().map((c) => c.name);
+
+  const prompt = `Siz O‘zbekiston chakana do‘koni uchun mahsulot kiritish yordamchisisiz.
+Quyidagi matn — do‘kon egasi yozgan yoki ovoz bilan aytgan mahsulotlar ro‘yxati (ovozdan matnga o‘tishda xatolar bo‘lishi mumkin).
+Har bir mahsulotni ajrating. FAQAT JSON:
+{"products":[{"name":"Coca-Cola 1.5 L","unit":"dona","buy_price":0,"sell_price":14000,"stock":20,"category_name":"Ichimliklar"}]}
+
+Qoidalar:
+- name: qisqa savdo nomi, brend + mahsulot + hajm/og‘irlik. Imlo xatolarini tuzating, bosh harf bilan yozing ("koka kola bir yarim litr" → "Coca-Cola 1.5 L").
+- Narxlar so‘mda: "14 ming" = 14000, "2,5 ming" = 2500, "o‘n ikki ming besh yuz" = 12500, "1.2 mln" = 1200000.
+- Bitta narx aytilsa — bu sotish narxi (sell_price). "olish/kelish/tan narxi" — buy_price, "sotish" — sell_price. Noma’lum narx 0.
+- stock: "20 ta", "5 kilo", "3 quti", "yigirmata" — miqdor. Aytilmasa 0.
+- unit faqat: ${UNITS.join(", ")}. Shisha, banka, paket, dona sotiladigan — "dona"; tortib sotiladigan (kilo) — "kg"; to‘kib sotiladigan — "litr".
+- Hajm (0.5 L, 1 L, 1.5 L, 2 L) yoki og‘irlik aytilsa nomga qo‘shing; aytilmasa o‘ylab topmang.
+- category_name: quyidagi ro‘yxatdan ANIQ bitta nom yoki null. Oziq-ovqatni kanselyariyaga qo‘ymang.
+MAVJUD TOIFALAR:
+${categories.length ? categories.map((c) => `- ${c}`).join("\n") : "- (toifa yo‘q)"}
+
+Matn:
+"""
+${clean}
+"""`;
+
+  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: { message?: string };
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  if (!res.ok) throw new Error(data.error?.message || "OpenAI so‘rovi muvaffaqiyatsiz");
+  let parsed: { products?: Array<AiProduct & { stock?: number | string }> };
+  try {
+    parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+  } catch {
+    throw new Error("AI javobini o‘qib bo‘lmadi");
+  }
+
+  const products: ListedProduct[] = [];
+  for (const item of parsed.products || []) {
+    const name = tidyPackSize(String(item.name || "").trim());
+    if (!name) continue;
+    let unit = String(item.unit || "dona").toLowerCase();
+    if (!UNITS.includes(unit as (typeof UNITS)[number])) unit = "dona";
+    const sell = parseUzsPrice(item.sell_price);
+    let buy = parseUzsPrice(item.buy_price);
+    const sell_price = sell || (buy ? Math.round(buy * 1.25) : 0);
+    if (!buy && sell_price) buy = Math.round(sell_price / 1.2);
+    if (buy > sell_price && sell_price) buy = Math.round(sell_price * 0.8);
+    const stock = Math.max(0, Number(String(item.stock ?? 0).replace(",", ".")) || 0);
+    products.push({ name, unit, buy_price: buy, sell_price, stock, category_name: resolveCategoryName(name, item.category_name, categories) });
+  }
+  if (!products.length) throw new Error("Ro‘yxatdan mahsulot topilmadi — nomi va narxini aniqroq yozing");
+  return { products };
+}

@@ -1,13 +1,68 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Image as ImageIcon, Loader2, Tag } from "lucide-react";
+import { Camera, Image as ImageIcon, ListPlus, Loader2, Mic, Square, Tag, Trash2 } from "lucide-react";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { ImportProducts } from "@/components/ImportProducts";
 import { api } from "@/lib/client";
 import { som, UNITS } from "@/lib/format";
 import { DRINK_SIZES, isDrinkCategory, packSize, withPackSize } from "@/lib/volume";
 import { isLowStock } from "@/lib/stock";
+
+const MAX_PHOTOS = 15;
+
+type Recognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+};
+
+function speechRecognition(): (new () => Recognition) | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+// Chrome sends speech to Google; on phones the keyboard mic does the same job, so this button is only a shortcut.
+function DictateButton({ onText }: { onText: (text: string) => void }) {
+  const [rec, setRec] = useState<Recognition | null>(null);
+  const [err, setErr] = useState("");
+  const Ctor = speechRecognition();
+  if (!Ctor) return null;
+
+  function start() {
+    const r = new Ctor!();
+    r.lang = "uz-UZ";
+    r.continuous = true;
+    r.interimResults = false;
+    r.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) onText(e.results[i][0].transcript.trim());
+      }
+    };
+    r.onerror = (e) => setErr(e.error === "not-allowed" ? "Mikrofonga ruxsat bering" : "Ovozni eshitib bo‘lmadi");
+    r.onend = () => setRec(null);
+    setErr("");
+    r.start();
+    setRec(r);
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button type="button" variant={rec ? "danger" : "ghost"} onClick={() => (rec ? rec.stop() : start())}>
+        {rec ? <Square size={16} /> : <Mic size={16} />}
+        {rec ? "To‘xtatish" : "Aytib berish"}
+      </Button>
+      {rec ? <span className="text-sm text-danger">Eshityapman… mahsulotlarni ketma-ket ayting</span> : null}
+      {err ? <span className="text-sm text-danger">{err}</span> : null}
+    </div>
+  );
+}
 
 function SizePicker({ name, show, onPick }: { name: string; show: boolean; onPick: (name: string) => void }) {
   if (!show) return null;
@@ -92,6 +147,11 @@ export function ProductsScreen() {
   const [catError, setCatError] = useState("");
   const [error, setError] = useState("");
   const [recognizing, setRecognizing] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [listOpen, setListOpen] = useState(false);
+  const [listText, setListText] = useState("");
+  const [listBusy, setListBusy] = useState(false);
+  const [listError, setListError] = useState("");
   const [savingAi, setSavingAi] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -178,53 +238,98 @@ export function ProductsScreen() {
     setOpen(true);
   }
 
-  async function recognizeFromFile(file: File) {
+  async function recognizeFiles(files: File[]) {
+    if (!files.length) return;
     setError("");
     setRecognizing(true);
+    const drafts: Draft[] = [];
+    const failed: string[] = [];
     try {
-      const body = new FormData();
-      body.append("image", file);
-      const res = await fetch("/api/products/recognize", { method: "POST", body });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        products?: Array<{
-          name?: string;
-          unit?: string;
-          buy_price?: number;
-          sell_price?: number;
-          category_id?: number | null;
-          image_url?: string;
-        }>;
-        product?: {
-          name?: string;
-          unit?: string;
-          buy_price?: number;
-          sell_price?: number;
-          category_id?: number | null;
-          image_url?: string;
-        };
-      };
-      if (!res.ok) throw new Error(data.error || "AI aniqlay olmadi");
-      const list = data.products?.length ? data.products : data.product ? [data.product] : [];
-      if (!list.length) throw new Error("Mahsulot topilmadi");
-      const drafts = list.map((item) => ({
-        ...emptyDraft(),
-        name: item.name || "",
-        unit: item.unit || "dona",
-        buy_price: String(item.buy_price ?? ""),
-        sell_price: String(item.sell_price ?? ""),
-        category_id: item.category_id || "",
-        image_url: item.image_url || "",
-      }));
-      await load();
-      setAiDrafts(drafts);
-      setAiOpen(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Xatolik");
+      for (let i = 0; i < files.length; i++) {
+        setProgress(files.length > 1 ? `${i + 1}/${files.length}` : "");
+        try {
+          drafts.push(...(await recognizeOne(files[i])));
+        } catch (e) {
+          failed.push(`${i + 1}-rasm: ${e instanceof Error ? e.message : "xato"}`);
+        }
+      }
+      if (drafts.length) {
+        await load();
+        setAiDrafts(drafts);
+        setAiOpen(true);
+      }
+      if (failed.length) setError(failed.length === files.length && files.length === 1 ? failed[0].replace(/^1-rasm: /, "") : failed.join("; "));
     } finally {
       setRecognizing(false);
+      setProgress("");
       if (cameraRef.current) cameraRef.current.value = "";
       if (galleryRef.current) galleryRef.current.value = "";
+    }
+  }
+
+  async function recognizeOne(file: File): Promise<Draft[]> {
+    const body = new FormData();
+    body.append("image", file);
+    const res = await fetch("/api/products/recognize", { method: "POST", body });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      products?: Array<{
+        name?: string;
+        unit?: string;
+        buy_price?: number;
+        sell_price?: number;
+        category_id?: number | null;
+        image_url?: string;
+      }>;
+      product?: {
+        name?: string;
+        unit?: string;
+        buy_price?: number;
+        sell_price?: number;
+        category_id?: number | null;
+        image_url?: string;
+      };
+    };
+    if (!res.ok) throw new Error(data.error || "AI aniqlay olmadi");
+    const list = data.products?.length ? data.products : data.product ? [data.product] : [];
+    if (!list.length) throw new Error("Mahsulot topilmadi");
+    return list.map((item) => ({
+      ...emptyDraft(),
+      name: item.name || "",
+      unit: item.unit || "dona",
+      buy_price: String(item.buy_price ?? ""),
+      sell_price: String(item.sell_price ?? ""),
+      category_id: item.category_id || "",
+      image_url: item.image_url || "",
+    }));
+  }
+
+  async function parseList() {
+    setListError("");
+    setListBusy(true);
+    try {
+      const d = await api<{
+        products: Array<{ name: string; unit: string; buy_price: number; sell_price: number; stock: number; category_id: number | null }>;
+      }>("/api/products/parse-list", { method: "POST", body: JSON.stringify({ text: listText }) });
+      await load();
+      setAiDrafts(
+        d.products.map((p) => ({
+          ...emptyDraft(),
+          name: p.name,
+          unit: p.unit,
+          buy_price: p.buy_price ? String(p.buy_price) : "",
+          sell_price: p.sell_price ? String(p.sell_price) : "",
+          stock: p.stock ? String(p.stock) : "",
+          category_id: p.category_id || "",
+        })),
+      );
+      setListOpen(false);
+      setListText("");
+      setAiOpen(true);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Xatolik");
+    } finally {
+      setListBusy(false);
     }
   }
 
@@ -288,9 +393,13 @@ export function ProductsScreen() {
       return;
     }
     setSavingAi(true);
+    let done = 0;
     try {
       for (const d of aiDrafts) {
-        if (!d.name.trim()) continue;
+        if (!d.name.trim()) {
+          done++;
+          continue;
+        }
         await api("/api/products", {
           method: "POST",
           body: JSON.stringify({
@@ -306,12 +415,16 @@ export function ProductsScreen() {
             image_url: d.image_url || null,
           }),
         });
+        done++;
       }
       setAiOpen(false);
       setAiDrafts([]);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Xatolik");
+      const failed = aiDrafts[done];
+      setAiDrafts((prev) => prev.slice(done));
+      setError(`${done ? `${done} tasi saqlandi. ` : ""}«${failed?.name || ""}»: ${e instanceof Error ? e.message : "Xatolik"}`);
+      if (done) load().catch(() => {});
     } finally {
       setSavingAi(false);
     }
@@ -401,7 +514,7 @@ export function ProductsScreen() {
             className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark ${recognizing ? "pointer-events-none opacity-50" : ""}`}
           >
             {recognizing ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-            {recognizing ? "Reklama tayyorlanmoqda..." : "Rasm orqali"}
+            {recognizing ? `AI o‘qiyapti${progress ? ` ${progress}` : "..."}` : "Rasm orqali"}
             <input
               ref={cameraRef}
               type="file"
@@ -409,29 +522,28 @@ export function ProductsScreen() {
               capture="environment"
               className="hidden"
               disabled={recognizing}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) recognizeFromFile(f);
-              }}
+              onChange={(e) => recognizeFiles(Array.from(e.target.files || []).slice(0, 1))}
             />
           </label>
           <label
             className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold hover:bg-black/5 ${recognizing ? "pointer-events-none opacity-50" : ""}`}
           >
             <ImageIcon size={16} />
-            Galereyadan
+            Galereyadan (bir nechta)
             <input
               ref={galleryRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               disabled={recognizing}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) recognizeFromFile(f);
-              }}
+              onChange={(e) => recognizeFiles(Array.from(e.target.files || []).slice(0, MAX_PHOTOS))}
             />
           </label>
+          <Button variant="ghost" onClick={() => setListOpen(true)} title="Mahsulotlarni ro‘yxat qilib yozing yoki ayting">
+            <ListPlus size={16} />
+            Ro‘yxat bilan
+          </Button>
           <ImportProducts onDone={() => load().catch(() => {})} />
           <Button
             variant="ghost"
@@ -816,6 +928,34 @@ export function ProductsScreen() {
       </Modal>
 
       <Modal
+        open={listOpen}
+        title="Ro‘yxat bilan kiritish"
+        onClose={() => {
+          if (!listBusy) setListOpen(false);
+        }}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            Har bir mahsulotni yangi qatorga yoki vergul bilan yozing: nomi, narxi va nechta borligi. Telefonda klaviaturadagi 🎤 tugmasini bosib aytsangiz ham bo‘ladi.
+          </p>
+          <textarea
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-base"
+            rows={8}
+            value={listText}
+            onChange={(e) => setListText(e.target.value)}
+            placeholder={"Coca-Cola 1,5 litr 14 ming, 24 ta\nNon 4000, 30 ta\nShakar 1 kg olish 11 ming sotish 13 ming, 10 kilo\nPista 5 ming 15 ta"}
+          />
+          <DictateButton onText={(t) => setListText((prev) => (prev.trim() ? `${prev.trim()}\n${t}` : t))} />
+          {listError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{listError}</div> : null}
+          <Button className="w-full" disabled={listBusy || !listText.trim()} onClick={parseList}>
+            {listBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+            {listBusy ? "AI jadval qilyapti..." : "AI bilan jadval qilish"}
+          </Button>
+          <p className="text-xs text-muted">Keyingi oynada hammasini tekshirib, bitta tugma bilan saqlaysiz.</p>
+        </div>
+      </Modal>
+
+      <Modal
         open={aiOpen}
         title={`AI topdi: ${aiDrafts.length} ta mahsulot`}
         onClose={() => {
@@ -823,11 +963,19 @@ export function ProductsScreen() {
         }}
       >
         <div className="grid max-h-[70vh] gap-4 overflow-y-auto">
-          <p className="text-sm text-muted">Reklamabop rasm va narxni tekshiring, so‘ng saqlang.</p>
+          <p className="text-sm text-muted">Nomi, narxi va toifasini tekshiring. Keraksizini 🗑 bilan olib tashlang, so‘ng saqlang.</p>
           {aiDrafts.map((d, i) => {
             const catLabel = categories.find((c) => String(c.id) === String(d.category_id))?.name;
             return (
-            <div key={i} className="grid gap-3 rounded-xl border border-line p-3">
+            <div key={i} className="relative grid gap-3 rounded-xl border border-line p-3">
+              <button
+                type="button"
+                title="Olib tashlash"
+                className="absolute right-2 top-2 rounded-lg p-1.5 text-muted hover:bg-red-50 hover:text-danger"
+                onClick={() => setAiDrafts((prev) => prev.filter((_, idx) => idx !== i))}
+              >
+                <Trash2 size={16} />
+              </button>
               {d.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={d.image_url} alt="" className="mx-auto h-48 w-48 rounded-xl object-cover shadow" />
@@ -859,17 +1007,23 @@ export function ProductsScreen() {
                   <Input type="number" value={d.buy_price} onChange={(e) => updateAiDraft(i, { buy_price: e.target.value })} />
                 </Field>
               </div>
-              <Field label="O‘lchov">
-                <Select value={d.unit} onChange={(e) => updateAiDraft(i, { unit: e.target.value })}>
-                  {UNITS.map((u) => (
-                    <option key={u}>{u}</option>
-                  ))}
-                </Select>
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="O‘lchov">
+                  <Select value={d.unit} onChange={(e) => updateAiDraft(i, { unit: e.target.value })}>
+                    {UNITS.map((u) => (
+                      <option key={u}>{u}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Qoldiq (nechta bor)">
+                  <Input type="number" value={d.stock} onChange={(e) => updateAiDraft(i, { stock: e.target.value })} />
+                </Field>
+              </div>
             </div>
             );
           })}
-          <Button onClick={saveAiDrafts} disabled={savingAi}>
+          {error ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
+          <Button onClick={saveAiDrafts} disabled={savingAi || !aiDrafts.length}>
             {savingAi ? "Saqlanmoqda..." : "Hammasi saqlash"}
           </Button>
         </div>

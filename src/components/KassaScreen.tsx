@@ -25,6 +25,7 @@ type Product = {
   min_stock?: number;
 };
 type Category = { id: number; name: string; color: string };
+type NewProductDraft = { barcode: string; name: string; sell_price: string; buy_price: string; stock: string; unit: string; category_id: string };
 type Customer = { id: number; name: string; phone: string | null; debt: number; bonus?: number };
 type CartLine = { product: Product; qty: number };
 type ParkedSale = { id: string; at: string; cart: CartLine[]; customerId: number; discount: number; method: string };
@@ -128,6 +129,9 @@ export function KassaScreen() {
   const [parked, setParked] = useState<ParkedSale[]>([]);
   const [parkedOpen, setParkedOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [newDraft, setNewDraft] = useState<NewProductDraft | null>(null);
+  const [newBusy, setNewBusy] = useState(false);
+  const [newError, setNewError] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickDraft, setQuickDraft] = useState<Product[]>([]);
   const [quickSearch, setQuickSearch] = useState("");
@@ -266,6 +270,64 @@ export function KassaScreen() {
     setSettings(s.settings);
     setShift(sh.shift);
     loadTop(s.settings.kassa_quick);
+    return p.products;
+  }
+
+  function pick(p: Product) {
+    if (p.unit === "kg" || p.unit === "litr") {
+      setQtyProduct(p);
+      setQtyValue("1");
+    } else addProduct(p, 1);
+  }
+
+  function findCode(code: string) {
+    load(code)
+      .then((list) => {
+        const hit = list.find((p) => p.barcode === code);
+        if (hit) {
+          pick(hit);
+          setQ("");
+          return;
+        }
+        if (!/^\d{6,14}$/.test(code)) return;
+        if (!isAdmin) {
+          setError(`Shtrix-kod ${code} bazada yo‘q. Do‘kon egasi uni kassada skanerlab qo‘shishi mumkin.`);
+          return;
+        }
+        setNewError("");
+        setNewDraft({ barcode: code, name: "", sell_price: "", buy_price: "", stock: "", unit: "dona", category_id: categoryId ? String(categoryId) : "" });
+      })
+      .catch((err) => setError(err.message));
+  }
+
+  async function saveNew(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDraft) return;
+    setNewError("");
+    setNewBusy(true);
+    try {
+      const { product } = await api<{ product: Product }>("/api/products", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newDraft.name,
+          barcode: newDraft.barcode,
+          unit: newDraft.unit,
+          category_id: newDraft.category_id ? Number(newDraft.category_id) : null,
+          sell_price: Number(newDraft.sell_price.replace(/\s/g, "")) || 0,
+          buy_price: Number(newDraft.buy_price.replace(/\s/g, "")) || 0,
+          stock: Number(newDraft.stock.replace(",", ".")) || 0,
+        }),
+      });
+      setNewDraft(null);
+      setQ("");
+      pick(product);
+      load("").catch(() => {});
+      searchRef.current?.focus();
+    } catch (err) {
+      setNewError(err instanceof Error ? err.message : "Xatolik");
+    } finally {
+      setNewBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -340,14 +402,11 @@ export function KassaScreen() {
     if (!code) return;
     const exact = products.find((p) => p.barcode === code || p.name.toLowerCase() === code.toLowerCase());
     if (exact) {
-      if (exact.unit === "kg" || exact.unit === "litr") {
-        setQtyProduct(exact);
-        setQtyValue("1");
-      } else addProduct(exact, 1);
+      pick(exact);
       setQ("");
       return;
     }
-    load(code).catch((err) => setError(err.message));
+    findCode(code);
   }
 
   function clickProduct(p: Product) {
@@ -462,7 +521,7 @@ export function KassaScreen() {
 
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   function onShortcut(e: KeyboardEvent) {
-    const modalOpen = payOpen || freeOpen || parkedOpen || quickOpen || !!qtyProduct || scanOpen || scaleOpen;
+    const modalOpen = payOpen || freeOpen || parkedOpen || quickOpen || !!qtyProduct || scanOpen || scaleOpen || !!newDraft;
     if (receipt && e.key === "Enter") {
       e.preventDefault();
       setReceipt(null);
@@ -850,6 +909,67 @@ export function KassaScreen() {
         </div>
       </aside>
       </div>
+
+      <Modal open={!!newDraft} title="Yangi mahsulot" onClose={() => (newBusy ? null : setNewDraft(null))}>
+        {newDraft ? (
+          <form className="space-y-3" onSubmit={saveNew}>
+            <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Shtrix-kod <span className="num font-bold">{newDraft.barcode}</span> bazada yo‘q. Nomi va narxini yozing — saqlanadi va savatga tushadi.
+            </div>
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium text-muted">Nomi</span>
+              <Input autoFocus required value={newDraft.name} placeholder="Masalan: Coca-Cola 1.5 L" onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium text-muted">Sotish narxi (so‘m)</span>
+              <Input
+                required
+                inputMode="numeric"
+                value={newDraft.sell_price}
+                onChange={(e) => setNewDraft({ ...newDraft, sell_price: e.target.value.replace(/[^\d\s]/g, "") })}
+              />
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {["dona", "kg", "litr"].map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => setNewDraft({ ...newDraft, unit: u })}
+                  className={`rounded-xl border px-2 py-2 text-sm! font-semibold ${newDraft.unit === u ? "border-brand bg-brand text-white" : "border-line bg-white"}`}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium text-muted">Toifa</span>
+              <Select value={newDraft.category_id} onChange={(e) => setNewDraft({ ...newDraft, category_id: e.target.value })}>
+                <option value="">Tanlanmagan</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium text-muted">Olish narxi (ixtiyoriy)</span>
+                <Input inputMode="numeric" value={newDraft.buy_price} onChange={(e) => setNewDraft({ ...newDraft, buy_price: e.target.value.replace(/[^\d\s]/g, "") })} />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium text-muted">Nechta bor (ixtiyoriy)</span>
+                <Input inputMode="decimal" value={newDraft.stock} onChange={(e) => setNewDraft({ ...newDraft, stock: e.target.value.replace(/[^\d.,]/g, "") })} />
+              </label>
+            </div>
+            {newError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{newError}</div> : null}
+            <Button type="submit" className="w-full" disabled={newBusy || !newDraft.name.trim() || !Number(newDraft.sell_price.replace(/\s/g, ""))}>
+              <Plus className="h-4 w-4" />
+              {newBusy ? "Saqlanmoqda..." : "Saqlash va savatga qo‘shish"}
+            </Button>
+          </form>
+        ) : null}
+      </Modal>
 
       <Modal open={!!qtyProduct} title={qtyProduct?.name || ""} onClose={() => setQtyProduct(null)}>
         <div className="space-y-3">
@@ -1240,13 +1360,10 @@ export function KassaScreen() {
             setQ(code);
             const exact = products.find((p) => p.barcode === code);
             if (exact) {
-              if (exact.unit === "kg" || exact.unit === "litr") {
-                setQtyProduct(exact);
-                setQtyValue("1");
-              } else addProduct(exact, 1);
+              pick(exact);
               setQ("");
             } else {
-              load(code).catch((err) => setError(err.message));
+              findCode(code);
             }
           }}
           onClose={() => setScanOpen(false)}
