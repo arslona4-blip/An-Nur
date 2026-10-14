@@ -4,12 +4,25 @@ import { ScanLine, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 
+type Detector = { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> };
+type DetectorCtor = new (opts?: { formats?: string[] }) => Detector;
+
 declare global {
   interface Window {
-    BarcodeDetector?: new (opts?: { formats?: string[] }) => {
-      detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>>;
-    };
+    BarcodeDetector?: DetectorCtor;
   }
+}
+
+const FORMATS = ["ean_13", "ean_8", "code_128", "upc_a", "upc_e", "qr_code"];
+
+// iPhone Safari has no native BarcodeDetector; the zxing build is served from /zxing so no CDN is needed.
+async function detectorClass(): Promise<DetectorCtor> {
+  if (window.BarcodeDetector) return window.BarcodeDetector;
+  const mod = await import("barcode-detector/ponyfill");
+  mod.setZXingModuleOverrides({
+    locateFile: (path: string, prefix: string) => (path.endsWith(".wasm") ? `/zxing/${path}` : prefix + path),
+  });
+  return mod.BarcodeDetector as unknown as DetectorCtor;
 }
 
 export function BarcodeScanner({ onScan, onClose }: { onScan: (code: string) => void; onClose: () => void }) {
@@ -23,9 +36,12 @@ export function BarcodeScanner({ onScan, onClose }: { onScan: (code: string) => 
     let stopped = false;
 
     async function start() {
-      if (!window.BarcodeDetector) {
+      let Ctor: DetectorCtor;
+      try {
+        Ctor = await detectorClass();
+      } catch {
         setSupported(false);
-        setError("Bu brauzer kamera skanerini qo'llab-quvvatlamaydi. Shtrix-kodni qo'lda kiriting.");
+        setError("Skanerni yuklab bo'lmadi. Internetni tekshiring yoki shtrix-kodni qo'lda kiriting.");
         return;
       }
       try {
@@ -36,19 +52,22 @@ export function BarcodeScanner({ onScan, onClose }: { onScan: (code: string) => 
         if (stopped || !videoRef.current) return;
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
-        const detector = new window.BarcodeDetector({
-          formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e", "qr_code"],
-        });
+        const detector = new Ctor({ formats: FORMATS });
+        let busy = false;
         timer = setInterval(async () => {
-          if (!videoRef.current || videoRef.current.readyState < 2) return;
+          if (busy || stopped || !videoRef.current || videoRef.current.readyState < 2) return;
+          busy = true;
           try {
             const codes = await detector.detect(videoRef.current);
-            if (codes[0]?.rawValue) {
+            if (codes[0]?.rawValue && !stopped) {
+              stopped = true;
               onScan(codes[0].rawValue);
               onClose();
             }
           } catch {
             /* ignore frame errors */
+          } finally {
+            busy = false;
           }
         }, 350);
       } catch (e) {
