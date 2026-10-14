@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui";
+import { PaidButton } from "@/components/PaidButton";
 import type { PayInfo } from "@/lib/license";
 import { som } from "@/lib/format";
 
@@ -42,7 +43,8 @@ export function LicenseNotice({ code, message, pay }: { code: string; message: s
             {pay.phone ? <div>To'lagach xabar bering: {pay.phone}</div> : null}
           </div>
         ) : null}
-        <Button onClick={close} className="w-full">
+        {pay ? <PaidButton monthly={pay.amount} claim={null} className="mb-2 w-full" onDone={close} /> : null}
+        <Button variant={pay ? "ghost" : "primary"} onClick={close} className="w-full">
           Tushunarli
         </Button>
       </div>

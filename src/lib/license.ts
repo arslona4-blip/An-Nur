@@ -28,6 +28,8 @@ export type PayInfo = { card: string; holder: string; phone: string; amount: num
 
 export type LicenseCode = "off" | "ok" | "soon" | "grace" | "pending" | "blocked";
 
+export type PaymentClaim = { at: string; amount: number; months: number };
+
 export type LicenseState = {
   code: LicenseCode;
   message: string;
@@ -37,7 +39,18 @@ export type LicenseState = {
   checkedAt: string | null;
   lastError: string | null;
   pay: PayInfo | null;
+  claim: PaymentClaim | null;
 };
+
+type StoredClaim = PaymentClaim & { until: string | null };
+
+function readClaim(settings: Record<string, string>): StoredClaim | null {
+  try {
+    return settings.license_claim ? (JSON.parse(settings.license_claim) as StoredClaim) : null;
+  } catch {
+    return null;
+  }
+}
 
 function payInfo(payload: TokenPayload): PayInfo | null {
   if (!payload.p?.c) return null;
@@ -101,7 +114,8 @@ async function refresh(force = false) {
   if (!key || !url || state.inFlight) return;
   const settings = getSettings();
   const hasToken = Boolean(settings.license_token);
-  const wait = hasToken && !settings.license_error ? REFRESH_OK_MS : REFRESH_RETRY_MS;
+  const waiting = Boolean(readClaim(settings));
+  const wait = hasToken && !settings.license_error && !waiting ? REFRESH_OK_MS : REFRESH_RETRY_MS;
   if (!force && Date.now() - state.lastTry < wait) return;
   state.lastTry = Date.now();
   state.inFlight = true;
@@ -181,7 +195,7 @@ export function licenseStatus(): LicenseState {
 
 function computeStatus(): LicenseState {
   const key = licenseKey();
-  const base = { daysLeft: null, paidUntil: null, shopName: null, checkedAt: null, lastError: null, pay: null };
+  const base = { daysLeft: null, paidUntil: null, shopName: null, checkedAt: null, lastError: null, pay: null, claim: null };
   if (!key) return { ...base, code: "off", message: "" };
   void refresh();
 
@@ -218,7 +232,14 @@ function computeStatus(): LicenseState {
   }
 
   const daysLeft = Math.round((dayMs(payload.u) - dayMs(tashkentDay(now))) / DAY);
-  const common = { ...info, daysLeft, paidUntil: payload.u, shopName: payload.n, pay: payInfo(payload) };
+  // A claim is settled once the panel moves the paid-until date (approved) or after a week (rejected or forgotten).
+  let stored = readClaim(settings);
+  if (stored && (stored.until !== payload.u || now - Date.parse(stored.at) > 7 * DAY)) {
+    saveSetting("license_claim", "");
+    stored = null;
+  }
+  const claim = stored ? { at: stored.at, amount: stored.amount, months: stored.months } : null;
+  const common = { ...info, daysLeft, paidUntil: payload.u, shopName: payload.n, pay: payInfo(payload), claim };
   if (!payload.a) {
     return { ...common, code: "blocked", message: "Kassa sotuvchi tomonidan to‘xtatilgan. Sotuvchingiz bilan bog‘laning." };
   }
@@ -259,6 +280,43 @@ export function assertLicensed() {
 
 export async function refreshLicense() {
   await refresh(true);
+  return licenseStatus();
+}
+
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+export async function claimPayment(input: { months: unknown; amount: unknown; note?: unknown; photo?: unknown; photoType?: unknown }) {
+  const key = licenseKey();
+  const url = panelUrl();
+  if (!key || !url) throw new Error("Bu kassada obuna yoqilmagan");
+  const months = Math.max(1, Math.min(24, Math.round(Number(input.months) || 1)));
+  const amount = Math.round(Number(input.amount) || 0);
+  if (amount <= 0) throw new Error("To‘langan summani kiriting");
+  const photo = typeof input.photo === "string" && input.photo ? input.photo : "";
+  const photoType = String(input.photoType || "");
+  if (photo && !PHOTO_TYPES.has(photoType)) throw new Error("Chek rasmi JPG, PNG yoki WEBP bo‘lsin");
+  if (photo.length > 3_400_000) throw new Error("Chek rasmi juda katta");
+  const res = await fetch(`${url}/api/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      key,
+      months,
+      amount,
+      note: String(input.note || "").trim().slice(0, 300),
+      photo: photo || undefined,
+      photo_type: photo ? photoType : undefined,
+    }),
+    signal: AbortSignal.timeout(30000),
+  }).catch(() => {
+    throw new Error("Obuna serveriga ulanib bo‘lmadi. Internetni tekshiring.");
+  });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok || !data.ok) throw new Error(data.error || `Panel javobi: ${res.status}`);
+  const settings = getSettings();
+  const payload = settings.license_token ? readToken(settings.license_token, key) : null;
+  const stored: StoredClaim = { at: new Date().toISOString(), amount, months, until: payload?.u ?? null };
+  saveSetting("license_claim", JSON.stringify(stored));
   return licenseStatus();
 }
 

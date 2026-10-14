@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin, requireUser } from "@/lib/auth";
-import { activateLicense, licenseStatus, refreshLicense } from "@/lib/license";
+import { activateLicense, claimPayment, licenseStatus, refreshLicense } from "@/lib/license";
 
 export async function GET() {
   try {
@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (body.action === "refresh") return NextResponse.json({ license: await refreshLicense() });
     if (body.action === "activate") return NextResponse.json({ license: activateLicense(String(body.code || "")) });
+    if (body.action === "claim") return NextResponse.json({ license: await claimPayment(body) });
     return jsonError(new Error("Noto'g'ri amal"));
   } catch (e) {
     return jsonError(e);

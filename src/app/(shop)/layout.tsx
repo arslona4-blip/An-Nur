@@ -7,6 +7,7 @@ import { licenseStatus } from "@/lib/license";
 import { getCurrentBranch } from "@/lib/phase4";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { LicenseNotice } from "@/components/LicenseNotice";
+import { PaidButton } from "@/components/PaidButton";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,12 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
               {license.pay.phone ? ` · to‘lagach xabar bering: ${license.pay.phone}` : ""}
             </div>
           ) : null}
+          {user.role === "admin" && license.pay ? (
+            <PaidButton monthly={license.pay.amount} claim={license.claim} className="mt-2" />
+          ) : null}
         </div>
       ) : null}
-      {user.role === "admin" && BANNER[license.code] ? (
+      {user.role === "admin" && BANNER[license.code] && !license.claim ? (
         <LicenseNotice code={license.code} message={license.message} pay={license.pay} />
       ) : null}
       {children}

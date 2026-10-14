@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Button, Card } from "@/components/ui";
 import { api } from "@/lib/client";
 import { som } from "@/lib/format";
+import type { PaymentClaim } from "@/lib/license";
+import { PaidButton } from "@/components/PaidButton";
 
 type License = {
   code: "off" | "ok" | "soon" | "grace" | "pending" | "blocked";
@@ -13,6 +15,7 @@ type License = {
   checkedAt: string | null;
   lastError: string | null;
   pay: { card: string; holder: string; phone: string; amount: number | null } | null;
+  claim: PaymentClaim | null;
 };
 
 const TONE: Record<License["code"], string> = {
@@ -30,11 +33,13 @@ export function LicenseCard() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  function load() {
     api<{ license: License }>("/api/license")
       .then((d) => setLicense(d.license))
       .catch(() => {});
-  }, []);
+  }
+
+  useEffect(load, []);
 
   async function run(body: Record<string, string>, done: string) {
     setBusy(true);
@@ -65,6 +70,7 @@ export function LicenseCard() {
           {license.pay.phone ? <div className="text-muted">To‘lagach xabar bering: {license.pay.phone}</div> : null}
         </div>
       ) : null}
+      {license.pay ? <PaidButton monthly={license.pay.amount} claim={license.claim} onDone={load} /> : null}
       <div className="text-xs text-muted">
         {license.shopName ? `Do‘kon: ${license.shopName}. ` : ""}
         Oxirgi tekshiruv: {license.checkedAt ? new Date(license.checkedAt).toLocaleString("ru-RU") : "—"}
