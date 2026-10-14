@@ -644,15 +644,16 @@ export function KassaScreen() {
                 </button>
               ) : null}
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {top.map((p, i) => (
                 <button
                   key={p.id}
                   onClick={() => clickProduct(p)}
-                  className={`min-h-16 rounded-2xl bg-brand px-2 py-2 text-left text-white shadow-sm active:scale-[0.98] ${i >= 12 ? "hidden xl:block" : i >= 6 ? "hidden sm:block" : ""}`}
+                  title={p.name}
+                  className={`rounded-xl bg-brand px-2 py-1.5 text-left text-white shadow-sm active:scale-[0.98] ${i >= 12 ? "hidden xl:block" : i >= 6 ? "hidden sm:block" : ""}`}
                 >
-                  <div className="line-clamp-2 text-sm font-bold leading-tight">{p.name}</div>
-                  <div className="mt-1 text-xs text-white/80 num">{som(p.sell_price)}</div>
+                  <div className="line-clamp-2 text-xs font-bold leading-tight">{p.name}</div>
+                  <div className="mt-0.5 text-[11px] text-white/80 num">{som(p.sell_price)}</div>
                 </button>
               ))}
             </div>
@@ -661,7 +662,7 @@ export function KassaScreen() {
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
           <button
             onClick={() => setCategoryId(0)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
           >
             Hammasi
           </button>
@@ -669,7 +670,7 @@ export function KassaScreen() {
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
+              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
             >
               {c.name}
             </button>
