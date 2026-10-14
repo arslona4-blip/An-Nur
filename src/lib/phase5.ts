@@ -395,7 +395,7 @@ export function resolveCategoryName(
     {
       label: "Qand-shakar",
       cat: ["qand-shakar", "qand shakar", "shakar", "сахар"],
-      words: ["shakar", "novvot", "navvot", "nabot", "rafinad", "сахар", "рафинад", "нават"],
+      words: ["shakar", "novvot", "navvot", "novot", "novat", "navat", "nabot", "rafinad", "сахар", "рафинад", "нават", "новвот"],
       whole: ["qand", "қанд", "канд"],
     },
     {
@@ -609,9 +609,9 @@ Uni toza ro‘yxatga aylantiring: HAR BIR MAHSULOT ALOHIDA QATOR, ko‘rinishi: 
 - Hajm/og‘irlik (1,5 L, 0,5 L, 1 kg, 400 g) nomdan keyin yoziladi. Ichimlikdan keyin birliksiz son ("kola 1.5", "pepsi ikki") — bu litr: "1,5 L", "2 L".
 - Ikkala narxni ham saqlang: "olish/kelish/tan narxi/oldim" → "olish ... so‘m"; "sotish/sotaman/sotuv" → "sotish ... so‘m". Narxlarni hech qachon bittaga qisqartirmang.
 - Faqat bitta narx aytilib, qaysiligi aytilmasa — "sotish ... so‘m".
-- Miqdor oxirida: "40 ta", "10 kg", "5 quti".
+- Miqdor oxirida, aytilgan birligi bilan: "40 ta", "50 kg", "20 litr", "5 quti". "kilo/kg" aytilgan miqdorni hech qachon "ta/dona" qilmang.
 - Faqat lotin harflari. Kirillni lotinga o‘giring. Matn rus, turk yoki qozoq yozuviga o‘xshab chiqqan bo‘lsa ham — bu o‘zbekcha gap, mahsulotlarni o‘zbekcha yozing.
-- Brend nomlarini rasmiy imlosida yozing: "koka kola" yoki yolg‘iz "kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers".
+- Brend nomlarini rasmiy imlosida yozing: "koka kola" yoki yolg‘iz "kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers". Mahsulot imlosi: "novat/navat/novot" → "Novvot".
 - Sonlarni faqat raqam bilan: "bir yarim litr" yoki "1. Yarim litr" → "1,5 L"; "yarim litr" → "0,5 L"; "o‘n to‘rt ming" yoki "14. Mingdan" → "14 000 so‘m"; "yigirma to‘rtta" → "24 ta"; "5 kilo" → "5 kg".
 - Pauzada bo‘lingan bo‘laklarni bitta mahsulotga birlashtiring; ketma-ket takrorlangan nomni bir marta yozing.
 - "a", "i", "xo‘sh", "yana", "keyin" kabi so‘zlarni va mahsulotga aloqasi yo‘q gaplarni tashlang.
@@ -674,7 +674,9 @@ Qoidalar:
 - Bitta narx aytilsa — bu sotish narxi (sell_price). "olish/kelish/tan narxi" — buy_price, "sotish" — sell_price. Noma’lum narx 0.
 - stock: "20 ta", "5 kilo", "3 quti", "yigirmata" — miqdor. Aytilmasa 0.
 - unit faqat: ${UNITS.join(", ")}. Shisha, banka, paket, dona sotiladigan — "dona"; tortib sotiladigan (kilo) — "kg"; to‘kib sotiladigan — "litr".
-- Hajm (0.5 L, 1 L, 1.5 L, 2 L) yoki og‘irlik aytilsa nomga qo‘shing; aytilmasa o‘ylab topmang.
+- MIQDOR BIRLIGI unit'ni belgilaydi: miqdor kg/kilo bilan ("50 kg") — unit "kg", stock 50; litr bilan — unit "litr"; "ta/dona/quti" bilan — unit "dona".
+- unit "kg" yoki "litr" bo‘lsa, "1 kg"/"1 litr" — bu narx birligi: nomga qo‘shmang ("Shakar 1kg olish 11000 sotish 13000 miqdori 50 kg" → name "Shakar", unit "kg", buy 11000, sell 13000, stock 50).
+- unit "dona" bo‘lsa, hajm/og‘irlik (0.5 L, 1.5 L, 1 kg paket, 400 g) nomga qo‘shiladi ("Shakar 1 kg ... 50 ta" → name "Shakar 1 kg", unit "dona"). Aytilmagan hajmni o‘ylab topmang.
 - category_name: quyidagi ro‘yxatdan ANIQ bitta nom yoki null. Oziq-ovqatni kanselyariyaga qo‘ymang.
 MAVJUD TOIFALAR:
 ${categories.length ? categories.map((c) => `- ${c}`).join("\n") : "- (toifa yo‘q)"}
@@ -710,7 +712,7 @@ ${clean}
 
   const products: ListedProduct[] = [];
   for (const item of parsed.products || []) {
-    const name = tidyPackSize(String(item.name || "").trim());
+    let name = tidyPackSize(String(item.name || "").trim());
     if (!name) continue;
     let unit = String(item.unit || "dona").toLowerCase();
     if (!UNITS.includes(unit as (typeof UNITS)[number])) unit = "dona";
@@ -719,7 +721,14 @@ ${clean}
     const sell_price = sell || (buy ? Math.round(buy * 1.25) : 0);
     if (!buy && sell_price) buy = Math.round(sell_price / 1.2);
     if (buy > sell_price && sell_price) buy = Math.round(sell_price * 0.8);
-    const stock = Math.max(0, Number(String(item.stock ?? 0).replace(",", ".")) || 0);
+    let stock = Math.max(0, Number(String(item.stock ?? 0).replace(",", ".")) || 0);
+    // Loose goods are priced per kg/litr, so a weight left in the name is the stock the AI misplaced.
+    const weight = unit === "dona" ? null : name.match(/\s*(\d+(?:[.,]\d+)?)\s*(kg|kilo|litr|l)\.?$/i);
+    if (weight && weight.index) {
+      const n = Number(weight[1].replace(",", "."));
+      name = name.slice(0, weight.index).trim();
+      if (!stock && n !== 1) stock = n;
+    }
     products.push({ name, unit, buy_price: buy, sell_price, stock, category_name: resolveCategoryName(name, item.category_name, categories) });
   }
   if (!products.length) throw new Error("Ro‘yxatdan mahsulot topilmadi — nomi va narxini aniqroq yozing");
