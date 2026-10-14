@@ -513,6 +513,11 @@ export async function parseProductList(text: string): Promise<{ products: Listed
 
   const prompt = `Siz O‘zbekiston chakana do‘koni uchun mahsulot kiritish yordamchisisiz.
 Quyidagi matn — do‘kon egasi yozgan yoki ovoz bilan aytgan mahsulotlar ro‘yxati (ovozdan matnga o‘tishda xatolar bo‘lishi mumkin).
+Ovozli matn uzluksiz bo‘lishi, pauzalarda bo‘linib ketishi mumkin: mahsulotlarni qator yoki nuqtaga emas, MA’NOGA qarab ajrating.
+- Bo‘lingan bo‘laklarni birlashtiring: "Koka kola. 1 yarim litr. 14 ming" — bitta mahsulot.
+- Ketma-ket takrorlangan nomni bir marta oling.
+- Mahsulotga aloqasi yo‘q gaplar, so‘z-to‘ldiruvchilar va tushunarsiz bo‘laklarni ("a", "i", "xo‘sh", "yana", "keyin") tashlab yuboring.
+- Nomi aniq bo‘lmagan bo‘lakdan mahsulot yasamang.
 Har bir mahsulotni ajrating. FAQAT JSON:
 {"products":[{"name":"Coca-Cola 1.5 L","unit":"dona","buy_price":0,"sell_price":14000,"stock":20,"category_name":"Ichimliklar"}]}
 

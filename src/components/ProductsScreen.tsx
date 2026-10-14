@@ -58,7 +58,7 @@ function DictateButton({ onText }: { onText: (text: string) => void }) {
         {rec ? <Square size={16} /> : <Mic size={16} />}
         {rec ? "To‘xtatish" : "Aytib berish"}
       </Button>
-      {rec ? <span className="text-sm text-danger">Eshityapman… mahsulotlarni ketma-ket ayting</span> : null}
+      {rec ? <span className="text-sm text-danger">Eshityapman… har mahsulotni «nomi, narxi, nechta» tartibida ayting</span> : null}
       {err ? <span className="text-sm text-danger">{err}</span> : null}
     </div>
   );
@@ -945,7 +945,16 @@ export function ProductsScreen() {
             onChange={(e) => setListText(e.target.value)}
             placeholder={"Coca-Cola 1,5 litr 14 ming, 24 ta\nNon 4000, 30 ta\nShakar 1 kg olish 11 ming sotish 13 ming, 10 kilo\nPista 5 ming 15 ta"}
           />
-          <DictateButton onText={(t) => setListText((prev) => (prev.trim() ? `${prev.trim()}\n${t}` : t))} />
+          <DictateButton
+            onText={(t) =>
+              setListText((prev) => {
+                const piece = t.replace(/[.!?…]+$/u, "").trim();
+                const base = prev.trimEnd();
+                if (!piece || base.toLowerCase().endsWith(piece.toLowerCase())) return prev;
+                return base ? `${base} ${piece}` : piece;
+              })
+            }
+          />
           {listError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{listError}</div> : null}
           <Button className="w-full" disabled={listBusy || !listText.trim()} onClick={parseList}>
             {listBusy ? <Loader2 size={16} className="animate-spin" /> : null}
