@@ -567,6 +567,35 @@ Qoidalar:
 
 export type ListedProduct = Omit<RecognizedProduct, "image_url" | "source_image_url"> & { stock: number };
 
+/** Telefon/kompyuter mikrofonidan yozilgan ovoz → matn (Safari o‘zbekchani o‘zi tanimaydi) */
+export async function transcribeAudio(file: File): Promise<string> {
+  const key = openaiKey();
+  if (!key) throw new Error("OpenAI API kaliti sozlanmagan — Sozlamalar → AI mahsulot");
+  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const hint = "Do‘kon mahsulotlari ro‘yxati: Coca-Cola 1,5 litr 14 ming, 24 ta. Non 4 ming, 30 ta. Shakar 1 kilo 13 ming.";
+
+  async function run(model: string) {
+    const form = new FormData();
+    form.append("file", file, file.name || "ovoz.webm");
+    form.append("model", model);
+    form.append("language", "uz");
+    form.append("prompt", hint);
+    const res = await fetch(`${baseUrl}/audio/transcriptions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = (await res.json().catch(() => ({}))) as { text?: string; error?: { message?: string } };
+    return { ok: res.ok, status: res.status, text: String(data.text || "").trim(), error: data.error?.message };
+  }
+
+  let r = await run("gpt-4o-mini-transcribe");
+  if (!r.ok && (r.status === 400 || r.status === 404)) r = await run("whisper-1");
+  if (!r.ok) throw new Error(r.error || "Ovozni matnga o‘girib bo‘lmadi");
+  return r.text;
+}
+
 /** Ovozdan kelgan xom matn → har qatorda bitta mahsulot: "Coca-Cola 1,5 L, 14 000 so‘m, 24 ta" */
 export async function tidyDictation(text: string): Promise<{ lines: string[] }> {
   const key = openaiKey();

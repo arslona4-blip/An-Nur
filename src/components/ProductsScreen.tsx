@@ -11,61 +11,66 @@ import { isLowStock } from "@/lib/stock";
 
 const MAX_PHOTOS = 15;
 
-type Recognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-};
+const MAX_RECORD_SEC = 180;
 
-function speechRecognition(): (new () => Recognition) | null {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
-
-// Chrome sends speech to Google; on phones the keyboard mic does the same job, so this button is only a shortcut.
-function DictateButton({ onStart, onText, onStop, busy }: { onStart: () => void; onText: (text: string) => void; onStop: () => void; busy: boolean }) {
-  const [rec, setRec] = useState<Recognition | null>(null);
+// Browser speech recognition has no Uzbek on iPhone, so audio is recorded and transcribed on the server.
+function DictateButton({ onAudio, status }: { onAudio: (audio: Blob) => void; status: string }) {
+  const [rec, setRec] = useState<MediaRecorder | null>(null);
+  const [secs, setSecs] = useState(0);
   const [err, setErr] = useState("");
-  const Ctor = speechRecognition();
-  if (!Ctor) return null;
+  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
-  function start() {
-    const r = new Ctor!();
-    r.lang = "uz-UZ";
-    r.continuous = true;
-    r.interimResults = false;
-    r.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) onText(e.results[i][0].transcript.trim());
-      }
-    };
-    r.onerror = (e) => setErr(e.error === "not-allowed" ? "Mikrofonga ruxsat bering" : "Ovozni eshitib bo‘lmadi");
-    r.onend = () => {
-      setRec(null);
-      onStop();
-    };
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  async function start() {
     setErr("");
-    onStart();
-    r.start();
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setErr("Bu brauzer ovoz yozolmaydi");
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setErr("Mikrofonga ruxsat bering");
+      return;
+    }
+    const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t));
+    const r = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    r.onstop = () => {
+      clearInterval(timer.current);
+      stream.getTracks().forEach((t) => t.stop());
+      setRec(null);
+      const audio = new Blob(chunks, { type: r.mimeType || mime || "audio/webm" });
+      if (audio.size > 1000) onAudio(audio);
+      else setErr("Ovoz yozilmadi — qaytadan ayting");
+    };
+    r.start(1000);
     setRec(r);
+    setSecs(0);
+    clearInterval(timer.current);
+    timer.current = setInterval(() => {
+      setSecs((s) => {
+        if (s + 1 >= MAX_RECORD_SEC && r.state === "recording") r.stop();
+        return s + 1;
+      });
+    }, 1000);
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Button type="button" variant={rec ? "danger" : "ghost"} onClick={() => (rec ? rec.stop() : start())}>
+    <div className="flex flex-wrap items-center gap-2">
+      <Button type="button" variant={rec ? "danger" : "ghost"} disabled={!rec && !!status} onClick={() => (rec ? rec.stop() : start())}>
         {rec ? <Square size={16} /> : <Mic size={16} />}
-        {rec ? "To‘xtatish" : "Aytib berish"}
+        {rec ? `To‘xtatish (${secs}s)` : "Aytib berish"}
       </Button>
-      {rec ? <span className="text-sm text-danger">Eshityapman… har mahsulotni «nomi, narxi, nechta» tartibida ayting</span> : null}
-      {busy ? (
+      {rec ? <span className="text-sm text-danger">Gapiring… tugatgach «To‘xtatish»ni bosing</span> : null}
+      {status ? (
         <span className="flex items-center gap-1 text-sm text-muted">
-          <Loader2 size={14} className="animate-spin" /> AI tozalayapti…
+          <Loader2 size={14} className="animate-spin" /> {status}
         </span>
       ) : null}
       {err ? <span className="text-sm text-danger">{err}</span> : null}
@@ -161,9 +166,7 @@ export function ProductsScreen() {
   const [listText, setListText] = useState("");
   const [listBusy, setListBusy] = useState(false);
   const [listError, setListError] = useState("");
-  const [tidying, setTidying] = useState(false);
-  const dictRef = useRef({ base: "", raw: "", lines: [] as string[], tidiedLen: 0, pending: 0 });
-  const tidyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [dictStatus, setDictStatus] = useState("");
   const [savingAi, setSavingAi] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -316,49 +319,29 @@ export function ProductsScreen() {
     }));
   }
 
-  function showDictation() {
-    const d = dictRef.current;
-    const rest = d.raw.slice(d.tidiedLen).trim();
-    setListText([d.base, ...d.lines, rest].filter(Boolean).join("\n"));
-  }
-
-  function dictStart() {
-    clearTimeout(tidyTimer.current);
-    dictRef.current = { base: listText.trimEnd(), raw: "", lines: [], tidiedLen: 0, pending: 0 };
-  }
-
-  function dictPiece(text: string) {
-    const d = dictRef.current;
-    const piece = text.trim();
-    if (!piece) return;
-    d.raw = d.raw ? `${d.raw} ${piece}` : piece;
-    showDictation();
-    clearTimeout(tidyTimer.current);
-    tidyTimer.current = setTimeout(tidyNow, 900);
-  }
-
-  // Pauses split one product into fragments, so the whole session is re-tidied each time, not just the new piece.
-  async function tidyNow() {
-    clearTimeout(tidyTimer.current);
-    const d = dictRef.current;
-    const raw = d.raw;
-    if (!raw.trim() || raw.length <= d.tidiedLen) return;
-    d.pending++;
-    setTidying(true);
+  async function dictAudio(audio: Blob) {
+    setListError("");
+    setDictStatus("AI eshityapti…");
     try {
+      const ext = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
+      const body = new FormData();
+      body.append("audio", audio, `ovoz.${ext}`);
+      const res = await fetch("/api/products/transcribe", { method: "POST", body });
+      const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || "Ovozni matnga o‘girib bo‘lmadi");
+      const raw = (data.text || "").trim();
+      if (!raw) throw new Error("Hech narsa eshitilmadi — qaytadan ayting");
+      setDictStatus("AI tozalayapti…");
       const r = await api<{ lines: string[] }>("/api/products/parse-list", {
         method: "POST",
         body: JSON.stringify({ mode: "tidy", text: raw }),
       });
-      if (dictRef.current === d && raw.length > d.tidiedLen) {
-        d.lines = r.lines;
-        d.tidiedLen = raw.length;
-        showDictation();
-      }
+      const lines = r.lines.length ? r.lines : [raw];
+      setListText((prev) => [prev.trimEnd(), ...lines].filter(Boolean).join("\n"));
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Xatolik");
     } finally {
-      if (--d.pending === 0) setTidying(false);
+      setDictStatus("");
     }
   }
 
@@ -994,7 +977,7 @@ export function ProductsScreen() {
       >
         <div className="space-y-3">
           <p className="text-sm text-muted">
-            Har bir mahsulotni yangi qatorga yoki vergul bilan yozing: nomi, narxi va nechta borligi. Telefonda klaviaturadagi 🎤 tugmasini bosib aytsangiz ham bo‘ladi.
+            Har bir mahsulotni yangi qatorga yozing: nomi, narxi va nechta borligi. Yoki «Aytib berish»ni bosib, mahsulotlarni «nomi, narxi, nechta» tartibida ayting.
           </p>
           <textarea
             className="w-full rounded-xl border border-line bg-white px-3 py-2 text-base"
@@ -1003,9 +986,9 @@ export function ProductsScreen() {
             onChange={(e) => setListText(e.target.value)}
             placeholder={"Coca-Cola 1,5 litr 14 ming, 24 ta\nNon 4000, 30 ta\nShakar 1 kg olish 11 ming sotish 13 ming, 10 kilo\nPista 5 ming 15 ta"}
           />
-          <DictateButton onStart={dictStart} onText={dictPiece} onStop={() => tidyNow()} busy={tidying} />
+          <DictateButton onAudio={dictAudio} status={dictStatus} />
           {listError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{listError}</div> : null}
-          <Button className="w-full" disabled={listBusy || tidying || !listText.trim()} onClick={parseList}>
+          <Button className="w-full" disabled={listBusy || !!dictStatus || !listText.trim()} onClick={parseList}>
             {listBusy ? <Loader2 size={16} className="animate-spin" /> : null}
             {listBusy ? "AI jadval qilyapti..." : "AI bilan jadval qilish"}
           </Button>
