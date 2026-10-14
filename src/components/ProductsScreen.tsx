@@ -977,14 +977,14 @@ export function ProductsScreen() {
       >
         <div className="space-y-3">
           <p className="text-sm text-muted">
-            Har bir mahsulotni yangi qatorga yozing: nomi, narxi va nechta borligi. Yoki «Aytib berish»ni bosib, mahsulotlarni «nomi, narxi, nechta» tartibida ayting.
+            Har bir mahsulotni yangi qatorga yozing yoki «Aytib berish»ni bosib ayting: nomi va hajmi, olish narxi, sotish narxi, nechta. Masalan: «Koka kola bir yarim litr, olish o‘n ikki ming besh yuz, sotish o‘n besh ming, qirqta».
           </p>
           <textarea
             className="w-full rounded-xl border border-line bg-white px-3 py-2 text-base"
             rows={8}
             value={listText}
             onChange={(e) => setListText(e.target.value)}
-            placeholder={"Coca-Cola 1,5 litr 14 ming, 24 ta\nNon 4000, 30 ta\nShakar 1 kg olish 11 ming sotish 13 ming, 10 kilo\nPista 5 ming 15 ta"}
+            placeholder={"Coca-Cola 1,5 L, olish 12 500, sotish 15 000, 40 ta\nNon, olish 2 500, sotish 3 000, 30 ta\nShakar 1 kg, olish 11 000, sotish 13 000, 10 kg"}
           />
           <DictateButton onAudio={dictAudio} status={dictStatus} />
           {listError ? <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{listError}</div> : null}

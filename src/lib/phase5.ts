@@ -605,14 +605,18 @@ export async function tidyDictation(text: string): Promise<{ lines: string[] }> 
   if (!clean) return { lines: [] };
 
   const prompt = `Do‘kon egasi mahsulotlarini ovoz bilan aytdi, brauzer uni matnga o‘girdi (xatolar, pauzadagi nuqtalar, takrorlar bor).
-Uni toza ro‘yxatga aylantiring: HAR BIR MAHSULOT ALOHIDA QATOR, ko‘rinishi: "Nomi hajmi, narxi so‘m, miqdori".
+Uni toza ro‘yxatga aylantiring: HAR BIR MAHSULOT ALOHIDA QATOR, ko‘rinishi: "Nomi hajmi, olish X so‘m, sotish Y so‘m, N ta".
+- Hajm/og‘irlik (1,5 L, 0,5 L, 1 kg, 400 g) nomdan keyin yoziladi. Ichimlikdan keyin birliksiz son ("kola 1.5", "pepsi ikki") — bu litr: "1,5 L", "2 L".
+- Ikkala narxni ham saqlang: "olish/kelish/tan narxi/oldim" → "olish ... so‘m"; "sotish/sotaman/sotuv" → "sotish ... so‘m". Narxlarni hech qachon bittaga qisqartirmang.
+- Faqat bitta narx aytilib, qaysiligi aytilmasa — "sotish ... so‘m".
+- Miqdor oxirida: "40 ta", "10 kg", "5 quti".
 - Faqat lotin harflari. Kirillni lotinga o‘giring. Matn rus, turk yoki qozoq yozuviga o‘xshab chiqqan bo‘lsa ham — bu o‘zbekcha gap, mahsulotlarni o‘zbekcha yozing.
-- Brend nomlarini rasmiy imlosida yozing: "koka kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers".
+- Brend nomlarini rasmiy imlosida yozing: "koka kola" yoki yolg‘iz "kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers".
 - Sonlarni faqat raqam bilan: "bir yarim litr" yoki "1. Yarim litr" → "1,5 L"; "yarim litr" → "0,5 L"; "o‘n to‘rt ming" yoki "14. Mingdan" → "14 000 so‘m"; "yigirma to‘rtta" → "24 ta"; "5 kilo" → "5 kg".
 - Pauzada bo‘lingan bo‘laklarni bitta mahsulotga birlashtiring; ketma-ket takrorlangan nomni bir marta yozing.
 - "a", "i", "xo‘sh", "yana", "keyin" kabi so‘zlarni va mahsulotga aloqasi yo‘q gaplarni tashlang.
 - Aytilmagan narx yoki miqdorni o‘ylab topmang — o‘sha qismni yozmang. Oxirgi mahsulot chala bo‘lsa ham borini yozing.
-FAQAT JSON: {"lines":["Coca-Cola 1,5 L, 14 000 so‘m, 24 ta","Non, 4 000 so‘m, 25 ta"]}
+FAQAT JSON: {"lines":["Coca-Cola 1,5 L, olish 12 500 so‘m, sotish 15 000 so‘m, 40 ta","Non, olish 2 500 so‘m, sotish 3 000 so‘m, 30 ta","Pepsi 2 L, sotish 12 000 so‘m, 10 ta"]}
 
 Matn:
 """
