@@ -349,3 +349,42 @@ body.splash-lock {
     opacity: 1;
   }
 }
+
+/* low stock warning */
+.low-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: #dc2626;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+  animation: low-blink 1s ease-in-out infinite;
+}
+
+.low-card {
+  border-color: #fca5a5 !important;
+  animation: low-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes low-blink {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+  }
+  50% {
+    opacity: 0.2;
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+
+@keyframes low-glow {
+  0%,
+  100% {
+    background-color: #ffffff;
+  }
+  50% {
+    background-color: #fee2e2;
+  }
+}

@@ -138,6 +138,7 @@ export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
           tone="from-rose-500 to-red-600"
           title="Kam qolgan"
           value={`${data.lowStock.length} ta`}
+          alert={data.lowStock.length > 0}
           href={data.payables != null ? "/buyurtma" : undefined}
           link="Buyurtma"
         >
@@ -145,9 +146,14 @@ export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
           {data.lowStock.map((p) => (
             <Row
               key={p.id}
-              left={p.name}
+              left={
+                <span className="flex items-center gap-2">
+                  <span className="low-dot" />
+                  {p.name}
+                </span>
+              }
               right={
-                <span className="text-danger">
+                <span className="font-semibold text-danger">
                   {p.stock} / {p.min_stock} {p.unit}
                 </span>
               }
@@ -178,6 +184,7 @@ function InfoTile({
   value,
   href,
   link,
+  alert,
   children,
 }: {
   tone: string;
@@ -185,6 +192,7 @@ function InfoTile({
   value: string;
   href?: string;
   link?: string;
+  alert?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -192,7 +200,10 @@ function InfoTile({
       <div className={`relative overflow-hidden bg-gradient-to-br ${tone} px-4 py-3 text-white`}>
         <span className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-white/10" />
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wide text-white/85">{title}</span>
+          <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-white/85">
+            {alert ? <span className="low-dot bg-white!" /> : null}
+            {title}
+          </span>
           {href ? (
             <Link href={href} className="rounded-lg bg-white/20 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/30">
               {link}

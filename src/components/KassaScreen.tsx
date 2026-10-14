@@ -11,6 +11,7 @@ import { api, NetworkError } from "@/lib/client";
 import { onDisplayHello, publishDisplay } from "@/lib/customerDisplay";
 import { queueOfflineSale } from "@/lib/offline";
 import { dualPrice, methodLabel, PAYMENT_METHODS, som } from "@/lib/format";
+import { isLowStock } from "@/lib/stock";
 
 type Product = {
   id: number;
@@ -21,6 +22,7 @@ type Product = {
   unit: string;
   sell_price: number;
   stock: number;
+  min_stock?: number;
 };
 type Category = { id: number; name: string; color: string };
 type Customer = { id: number; name: string; phone: string | null; debt: number; bonus?: number };
@@ -675,21 +677,26 @@ export function KassaScreen() {
         </div>
         {error ? <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
         <div className="mt-3 grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pb-2 sm:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((p) => (
+          {filtered.map((p) => {
+            const low = isLowStock(p);
+            return (
             <button
               key={p.id}
               onClick={() => clickProduct(p)}
-              className="rounded-2xl border border-line bg-white p-3 text-left hover:border-brand"
+              className={`relative rounded-2xl border border-line bg-white p-3 text-left hover:border-brand ${low ? "low-card" : ""}`}
             >
-              <div className="text-sm font-semibold leading-snug">{p.name}</div>
-              <div className="mt-1 text-xs text-muted">
+              {low ? <span className="low-dot absolute right-2.5 top-2.5" title="Kam qoldi" /> : null}
+              <div className={`text-sm font-semibold leading-snug ${low ? "pr-4" : ""}`}>{p.name}</div>
+              <div className={`mt-1 text-xs ${low ? "font-bold text-danger" : "text-muted"}`}>
+                {low ? (p.stock <= 0 ? "Tugagan: " : "Kam qoldi: ") : ""}
                 {p.stock} {p.unit}
               </div>
               <div className="mt-2 font-bold text-brand num text-xs leading-snug">
                 {dualPrice(p.sell_price, usdRate, usdEnabled)}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -734,7 +741,10 @@ export function KassaScreen() {
             cart.map((line) => (
               <div key={line.product.id} className="flex items-center gap-2 rounded-xl bg-bg p-2">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{line.product.name}</div>
+                  <div className="flex items-center gap-1.5 truncate text-sm font-medium">
+                    {isLowStock(line.product) ? <span className="low-dot" title="Kam qoldi" /> : null}
+                    <span className="truncate">{line.product.name}</span>
+                  </div>
                   <div className="text-xs text-muted num">{som(line.product.sell_price)}</div>
                 </div>
                 <div className="flex items-center gap-1">

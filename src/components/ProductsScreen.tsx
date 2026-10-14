@@ -7,6 +7,7 @@ import { ImportProducts } from "@/components/ImportProducts";
 import { api } from "@/lib/client";
 import { som, UNITS } from "@/lib/format";
 import { DRINK_SIZES, isDrinkCategory, packSize, withPackSize } from "@/lib/volume";
+import { isLowStock } from "@/lib/stock";
 
 function SizePicker({ name, show, onPick }: { name: string; show: boolean; onPick: (name: string) => void }) {
   if (!show) return null;
@@ -616,8 +617,11 @@ export function ProductsScreen() {
                 </td>
                 <td className="px-4 py-3 num text-muted">{p.barcode || p.sku}</td>
                 <td className="px-4 py-3">{p.category_name || "—"}</td>
-                <td className={`px-4 py-3 num ${p.min_stock && p.stock <= p.min_stock ? "text-danger font-semibold" : ""}`}>
-                  {p.stock} {p.unit}
+                <td className={`px-4 py-3 num ${isLowStock(p) && p.active ? "text-danger font-semibold" : ""}`}>
+                  <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                    {isLowStock(p) && p.active ? <span className="low-dot" title="Kam qoldi" /> : null}
+                    {p.stock} {p.unit}
+                  </span>
                 </td>
                 <td className="px-4 py-3 num">{som(p.buy_price)}</td>
                 <td className="px-4 py-3 num">{som(p.sell_price)}</td>
