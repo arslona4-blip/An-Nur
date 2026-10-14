@@ -768,7 +768,13 @@ export function KassaScreen() {
                   >
                     −
                   </button>
-                  <span className="w-10 text-center text-sm num">{line.qty}</span>
+                  <QtyInput
+                    value={line.qty}
+                    whole={line.product.unit === "dona"}
+                    onCommit={(qty) =>
+                      setCart((prev) => prev.map((l) => (l.product.id === line.product.id ? { ...l, qty } : l)))
+                    }
+                  />
                   <button
                     className="h-8 w-8 rounded-lg bg-white"
                     onClick={() =>
@@ -1247,5 +1253,44 @@ export function KassaScreen() {
         />
       ) : null}
     </div>
+  );
+}
+
+function QtyInput({ value, whole, onCommit }: { value: number; whole: boolean; onCommit: (qty: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [before, setBefore] = useState(value);
+  const parse = (text: string) => {
+    const n = Number(text.replace(",", ".").trim());
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return whole ? Math.max(1, Math.round(n)) : Math.round(n * 1000) / 1000;
+  };
+  return (
+    <input
+      type="text"
+      inputMode={whole ? "numeric" : "decimal"}
+      aria-label="Miqdor"
+      className="num h-8 w-14 rounded-lg border border-line bg-white text-center outline-none focus:border-brand"
+      value={draft ?? String(value)}
+      onFocus={(e) => {
+        setBefore(value);
+        setDraft(String(value));
+        e.currentTarget.select();
+      }}
+      onChange={(e) => {
+        const text = e.target.value.replace(/[^0-9.,]/g, "");
+        setDraft(text);
+        const qty = parse(text);
+        if (qty != null) onCommit(qty);
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCommit(before);
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
