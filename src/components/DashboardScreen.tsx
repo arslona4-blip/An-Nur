@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
-import { Card } from "@/components/ui";
+import { Banknote, BookOpen, Receipt, TrendingUp } from "lucide-react";
 import { api } from "@/lib/client";
 import { expiryLabel, methodLabel, som, tashkentDateTime } from "@/lib/format";
 
@@ -51,28 +51,50 @@ export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
   const max = Math.max(...data.chart.map((c) => c.total), 1);
   const week = data.chart.reduce((sum, c) => sum + c.total, 0);
   const cards = [
-    { label: "Bugungi savdo", value: som(data.today.sales), sub: `${data.today.count} ta chek` },
-    data.today.profit != null ? { label: "Foyda", value: som(data.today.profit), sub: "sotish − tannarx" } : null,
-    data.cash != null ? { label: "Kassadagi naqd", value: som(data.cash), sub: "hozirgi qoldiq" } : null,
-    { label: "Mijoz qarzi", value: som(data.debts), sub: "haqdorlar" },
+    {
+      label: "Bugungi savdo",
+      value: som(data.today.sales),
+      sub: `${data.today.count} ta chek`,
+      tone: "from-emerald-500 to-teal-600",
+      icon: Receipt,
+    },
+    data.today.profit != null
+      ? { label: "Foyda", value: som(data.today.profit), sub: "sotish − tannarx", tone: "from-sky-500 to-blue-600", icon: TrendingUp }
+      : null,
+    data.cash != null
+      ? { label: "Kassadagi naqd", value: som(data.cash), sub: "hozirgi qoldiq", tone: "from-amber-500 to-orange-600", icon: Banknote }
+      : null,
+    { label: "Mijoz qarzi", value: som(data.debts), sub: "haqdorlar", tone: "from-rose-500 to-red-600", icon: BookOpen },
   ].filter((c) => c !== null);
 
-  const cardList = cards.map((c) => (
-    <Card key={c.label} className="p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{c.label}</div>
-      <div className="mt-2 text-2xl font-extrabold num">{c.value}</div>
-      <div className="mt-1 text-xs text-muted">{c.sub}</div>
-    </Card>
-  ));
+  const cardList = cards.map((c) => {
+    const Icon = c.icon;
+    return (
+      <div
+        key={c.label}
+        className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${c.tone} px-3.5 py-3 text-white shadow-md`}
+      >
+        <span className="absolute -right-5 -top-5 h-14 w-14 rounded-full bg-white/10" />
+        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-white/85">
+          <span className="grid h-6 w-6 place-items-center rounded-lg bg-white/20">
+            <Icon size={14} />
+          </span>
+          {c.label}
+        </div>
+        <div className="num mt-1.5 text-xl font-extrabold">{c.value}</div>
+        <div className="text-[11px] text-white/75">{c.sub}</div>
+      </div>
+    );
+  });
 
   return (
     <div className="space-y-6">
       {menu ? (
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="min-w-0">{menu}</div>
-          <div className="lg:w-64 lg:shrink-0">
+          <div className="lg:w-56 lg:shrink-0">
             <div className="mb-2.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Bugungi holat</div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">{cardList}</div>
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">{cardList}</div>
           </div>
         </div>
       ) : (
@@ -84,9 +106,9 @@ export function DashboardScreen({ menu }: { menu?: ReactNode } = {}) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cardList}</div>
         </>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <InfoTile tone="from-teal-500 to-emerald-600" title="So‘nggi 7 kun" value={som(week)}>
-          <div className="flex h-28 items-end gap-1.5 pt-2">
+          <div className="flex h-20 items-end gap-1 pt-1.5">
             {data.chart.map((c) => (
               <div key={c.day} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
                 <div className="flex w-full flex-1 items-end">
@@ -196,8 +218,8 @@ function InfoTile({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-line bg-paper shadow-sm">
-      <div className={`relative overflow-hidden bg-gradient-to-br ${tone} px-4 py-3 text-white`}>
+    <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
+      <div className={`relative overflow-hidden bg-gradient-to-br ${tone} px-3 py-2 text-white`}>
         <span className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-white/10" />
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-white/85">
@@ -210,16 +232,16 @@ function InfoTile({
             </Link>
           ) : null}
         </div>
-        <div className="num mt-1 text-xl font-extrabold">{value}</div>
+        <div className="num mt-0.5 text-lg font-extrabold leading-tight">{value}</div>
       </div>
-      <div className="max-h-56 flex-1 space-y-0.5 overflow-y-auto px-3 py-2 text-sm">{children}</div>
+      <div className="max-h-40 flex-1 overflow-y-auto px-3 py-1.5 text-xs">{children}</div>
     </div>
   );
 }
 
 function Row({ left, right, strong }: { left: ReactNode; right: ReactNode; strong?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-2 border-b border-line/60 py-1.5 last:border-0">
+    <div className="flex items-start justify-between gap-2 border-b border-line/60 py-1 last:border-0">
       <span className="min-w-0">{left}</span>
       <span className={`num shrink-0 text-right ${strong ? "font-semibold" : "text-muted"}`}>{right}</span>
     </div>
@@ -227,5 +249,5 @@ function Row({ left, right, strong }: { left: ReactNode; right: ReactNode; stron
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="py-2 text-muted">{children}</div>;
+  return <div className="py-1.5 text-muted">{children}</div>;
 }
