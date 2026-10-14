@@ -1,12 +1,13 @@
 "use client";
 
-import { Camera, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Camera, ScanLine, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { api } from "@/lib/client";
-import { som, tashkentDateTime } from "@/lib/format";
+import { som, tashkentDateTime, UNITS } from "@/lib/format";
 
-type Product = { id: number; name: string; buy_price: number; sell_price: number; unit: string; stock: number };
+type Product = { id: number; name: string; barcode: string | null; sku: string; buy_price: number; sell_price: number; unit: string; stock: number };
 type Supplier = { id: number; name: string };
 type StockIn = {
   id: number;
@@ -26,6 +27,7 @@ type Line = {
   buy_price: string;
   sell_price: string;
   expiry_date: string;
+  barcode?: string;
 };
 type InvoiceLine = {
   name: string;
@@ -49,7 +51,11 @@ export function StockScreen() {
   const [reading, setReading] = useState(false);
   const [aiNote, setAiNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [code, setCode] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanNote, setScanNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     const [p, s, st] = await Promise.all([
@@ -84,6 +90,34 @@ export function StockScreen() {
     setLines((prev) => [...prev, lineFor(p)]);
     setPick("");
   }
+
+  // Scanning the same code again adds one more instead of a duplicate line; the touched line moves to the top.
+  function addByCode(raw: string) {
+    const c = raw.trim();
+    setCode("");
+    if (!c) return;
+    const p = products.find((x) => x.barcode === c || x.sku === c);
+    setLines((prev) => {
+      const at = prev.findIndex((l) => (p ? l.product_id === p.id : !l.product_id && l.barcode === c));
+      if (at >= 0) {
+        const bumped = { ...prev[at], qty: String((Number(prev[at].qty) || 0) + 1) };
+        return [bumped, ...prev.filter((_, i) => i !== at)];
+      }
+      const fresh: Line = p
+        ? lineFor(p)
+        : { product_id: 0, name: "", unit: "dona", qty: "1", buy_price: "", sell_price: "", expiry_date: "", barcode: c };
+      return [fresh, ...prev];
+    });
+    setScanNote(p ? `${p.name} qo‘shildi` : `Yangi shtrix kod ${c} — nomi va narxini yozing yoki ro‘yxatdan tanlang`);
+    codeRef.current?.focus();
+  }
+
+  const addByCodeRef = useRef(addByCode);
+  useEffect(() => {
+    addByCodeRef.current = addByCode;
+  });
+  const onScanCode = useCallback((c: string) => addByCodeRef.current(c), []);
+  const closeScan = useCallback(() => setScanOpen(false), []);
 
   function patchLine(i: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
@@ -146,15 +180,23 @@ export function StockScreen() {
     setError("");
     setSaving(true);
     try {
+      if (lines.some((l) => !l.product_id && !l.name.trim())) throw new Error("Yangi mahsulot nomini yozing");
       const ready = [...lines];
       for (let i = 0; i < ready.length; i++) {
         const l = ready[i];
-        if (l.product_id) continue;
+        if (l.product_id) {
+          const known = products.find((p) => p.id === l.product_id);
+          if (l.barcode && known && !known.barcode) {
+            await api("/api/products", { method: "PUT", body: JSON.stringify({ id: known.id, barcode: l.barcode }) });
+          }
+          continue;
+        }
         const { product } = await api<{ product: Product }>("/api/products", {
           method: "POST",
           body: JSON.stringify({
             name: l.name,
             unit: l.unit,
+            barcode: l.barcode || undefined,
             buy_price: Number(l.buy_price || 0),
             sell_price: Number(l.sell_price || 0),
             stock: 0,
@@ -181,6 +223,7 @@ export function StockScreen() {
       setLines([]);
       setPaid("0");
       setAiNote("");
+      setScanNote("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Xatolik");
@@ -259,6 +302,29 @@ export function StockScreen() {
               ))}
             </Select>
           </Field>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              addByCode(code);
+            }}
+          >
+            <Input
+              ref={codeRef}
+              autoFocus
+              value={code}
+              inputMode="numeric"
+              placeholder="Shtrix kodni skanerlang yoki yozing"
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <Button type="button" variant="ghost" aria-label="Kamera bilan skanerlash" onClick={() => setScanOpen(true)}>
+              <ScanLine size={18} />
+            </Button>
+            <Button type="submit" variant="ghost" disabled={!code.trim()}>
+              Qo‘shish
+            </Button>
+          </form>
+          {scanNote ? <div className="text-sm text-muted">{scanNote}</div> : null}
           <div className="flex gap-2">
             <Select value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">Mahsulot qo‘shish</option>
@@ -287,7 +353,12 @@ export function StockScreen() {
                     <span className="shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-900">
                       YANGI
                     </span>
-                    <Input value={l.name} onChange={(e) => patchLine(i, { name: e.target.value })} className="py-1.5" />
+                    <Input
+                      value={l.name}
+                      placeholder="Mahsulot nomi"
+                      onChange={(e) => patchLine(i, { name: e.target.value })}
+                      className="py-1.5"
+                    />
                   </div>
                 )}
                 <button
@@ -298,7 +369,24 @@ export function StockScreen() {
                   <Trash2 size={16} />
                 </button>
               </div>
-              {aiNote ? (
+              {l.barcode ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <span className="num">Shtrix kod: {l.barcode}</span>
+                  {!l.product_id
+                    ? UNITS.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          className={`rounded-full border px-2 py-0.5 text-xs! ${l.unit === u ? "border-primary bg-primary text-white" : "border-line"}`}
+                          onClick={() => patchLine(i, { unit: u })}
+                        >
+                          {u}
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ) : null}
+              {aiNote || (l.barcode && !l.product_id) ? (
                 <Select value={l.product_id || ""} onChange={(e) => relink(i, e.target.value)} className="py-1.5 text-sm">
                   <option value="">➕ Yangi mahsulot sifatida qo‘shish</option>
                   {products.map((p) => (
@@ -346,6 +434,7 @@ export function StockScreen() {
           </Button>
         </div>
       </Modal>
+      {scanOpen ? <BarcodeScanner onScan={onScanCode} onClose={closeScan} /> : null}
     </div>
   );
 }
