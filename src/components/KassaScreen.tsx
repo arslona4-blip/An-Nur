@@ -658,10 +658,10 @@ export function KassaScreen() {
             </div>
           </div>
         ) : null}
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
           <button
             onClick={() => setCategoryId(0)}
-            className={`rounded-full px-3 py-1.5 text-sm ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
           >
             Hammasi
           </button>
@@ -669,29 +669,30 @@ export function KassaScreen() {
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`rounded-full px-3 py-1.5 text-sm ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
+              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${categoryId === c.id ? "bg-brand text-white" : "bg-white border border-line"}`}
             >
               {c.name}
             </button>
           ))}
         </div>
         {error ? <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
-        <div className="mt-3 grid auto-rows-min grid-cols-2 gap-2 pb-2 sm:grid-cols-3 md:min-h-0 md:flex-1 md:overflow-y-auto xl:grid-cols-4">
+        <div className="mt-2 grid auto-rows-min grid-cols-3 gap-1.5 pb-2 sm:grid-cols-4 md:min-h-0 md:flex-1 md:overflow-y-auto lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {filtered.map((p) => {
             const low = isLowStock(p);
             return (
             <button
               key={p.id}
               onClick={() => clickProduct(p)}
-              className={`relative rounded-2xl border border-line bg-white p-3 text-left hover:border-brand ${low ? "low-card" : ""}`}
+              title={p.name}
+              className={`relative flex flex-col rounded-xl border border-line bg-white px-2 py-1.5 text-left hover:border-brand ${low ? "low-card" : ""}`}
             >
-              {low ? <span className="low-dot absolute right-2.5 top-2.5" title="Kam qoldi" /> : null}
-              <div className={`text-sm font-semibold leading-snug ${low ? "pr-4" : ""}`}>{p.name}</div>
-              <div className={`mt-1 text-xs ${low ? "font-bold text-danger" : "text-muted"}`}>
-                {low ? (p.stock <= 0 ? "Tugagan: " : "Kam qoldi: ") : ""}
+              {low ? <span className="low-dot absolute right-1.5 top-1.5 h-2! w-2!" title="Kam qoldi" /> : null}
+              <div className={`line-clamp-2 text-xs font-semibold leading-tight ${low ? "pr-3" : ""}`}>{p.name}</div>
+              <div className={`mt-0.5 text-[10px] ${low ? "font-bold text-danger" : "text-muted"}`}>
+                {low ? (p.stock <= 0 ? "Tugagan: " : "Kam: ") : ""}
                 {p.stock} {p.unit}
               </div>
-              <div className="mt-2 font-bold text-brand num text-xs leading-snug">
+              <div className="mt-auto pt-0.5 font-bold text-brand num text-[11px] leading-tight">
                 {dualPrice(p.sell_price, usdRate, usdEnabled)}
               </div>
             </button>
