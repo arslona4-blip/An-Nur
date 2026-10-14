@@ -1432,6 +1432,7 @@ const CATEGORY_COLORS: [RegExp, string][] = [
   [/gazak|chips|semech|pista|снек|семеч/i, "#c2410c"],
   [/kansel|kanstovar|daftar|ruchka|канц/i, "#4338ca"],
   [/maishiy|kimyo|gigiyen|sovun|poroshok|быт|хим/i, "#7c3aed"],
+  [/qand|shakar|novvot|сахар/i, "#e11d48"],
   [/yorma|yog|un\b|guruch|krupa|круп|масл/i, "#a16207"],
   [/muzqaymoq|морож/i, "#0891b2"],
   [/konserva|консерв/i, "#9a3412"],

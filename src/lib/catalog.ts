@@ -4,6 +4,7 @@ export const FOOD_CATEGORIES = [
   { name: "Go'sht-tuxum", color: "#b91c1c" },
   { name: "Sut mahsulotlari", color: "#a16207" },
   { name: "Yorma va yog'", color: "#0f766e" },
+  { name: "Qand-shakar", color: "#e11d48" },
   { name: "Ichimliklar", color: "#0369a1" },
   { name: "Shirinlik", color: "#9d174d" },
 ] as const;
@@ -39,7 +40,7 @@ export const FOOD_PRODUCTS: Array<
 
   ["20004001", "Guruch", "Yorma va yog'", "kg", 14000, 18000, 50, 12],
   ["20004002", "Un", "Yorma va yog'", "kg", 7000, 9500, 40, 12],
-  ["20004003", "Shakar", "Yorma va yog'", "kg", 11000, 14000, 28, 8],
+  ["20004003", "Shakar", "Qand-shakar", "kg", 11000, 14000, 28, 8],
   ["20004004", "Makaron", "Yorma va yog'", "dona", 6000, 8500, 45, 12],
   ["20004005", "Grechka", "Yorma va yog'", "kg", 16000, 21000, 14, 4],
   ["20004006", "Mosh", "Yorma va yog'", "kg", 18000, 24000, 10, 3],

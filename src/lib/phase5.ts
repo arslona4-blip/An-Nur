@@ -48,6 +48,7 @@ export function migratePhase5(db: DatabaseSync) {
   for (const [k, v] of Object.entries(defaults)) ins.run(k, v);
 
   fs.mkdirSync(uploadsDir("products"), { recursive: true });
+  moveSugarToOwnCategory(db);
 
   const ver = db.prepare("SELECT value FROM settings WHERE key = 'schema_version'").get() as { value: string } | undefined;
   if (ver?.value === PHASE5) return;
@@ -55,6 +56,31 @@ export function migratePhase5(db: DatabaseSync) {
     "schema_version",
     PHASE5,
   );
+}
+
+const SUGAR_SQL = `(lower(name) LIKE '%shakar%' OR lower(name) LIKE '%novvot%' OR lower(name) LIKE '%navvot%'
+  OR lower(name) LIKE '%nabot%' OR lower(name) LIKE '%rafinad%' OR name LIKE '%сахар%' OR name LIKE '%Сахар%'
+  OR name LIKE '%нават%' OR name LIKE '%Нават%' OR name LIKE '%рафинад%' OR name LIKE '%Рафинад%'
+  OR lower(name) = 'qand' OR lower(name) LIKE 'qand %' OR lower(name) LIKE '% qand' OR lower(name) LIKE '% qand %')`;
+
+// Runs once: sugar used to live in "Yorma va yog'"; products the owner filed elsewhere by hand stay where they are.
+function moveSugarToOwnCategory(db: DatabaseSync) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'migr_qand_shakar'").get()) return;
+  const yorma = (db.prepare("SELECT id, name FROM categories").all() as Array<{ id: number; name: string }>)
+    .filter((c) => c.name.toLowerCase().replace(/['ʼ`‘’]/g, "").startsWith("yorma"))
+    .map((c) => c.id);
+  const from = `(category_id IS NULL${yorma.length ? ` OR category_id IN (${yorma.join(",")})` : ""})`;
+  const ids = (db.prepare(`SELECT id FROM products WHERE ${SUGAR_SQL} AND ${from}`).all() as Array<{ id: number }>).map((r) => r.id);
+  if (ids.length) {
+    let cat = db.prepare("SELECT id FROM categories WHERE lower(name) = 'qand-shakar'").get() as { id: number } | undefined;
+    if (!cat) {
+      const sort = (db.prepare("SELECT COALESCE(MAX(sort), 0) + 1 AS s FROM categories").get() as { s: number }).s;
+      const info = db.prepare("INSERT INTO categories (name, color, sort) VALUES ('Qand-shakar', '#e11d48', ?)").run(sort);
+      cat = { id: Number(info.lastInsertRowid) };
+    }
+    db.prepare(`UPDATE products SET category_id = ? WHERE id IN (${ids.join(",")})`).run(cat.id);
+  }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('migr_qand_shakar', ?) ON CONFLICT(key) DO NOTHING").run(String(ids.length));
 }
 
 export function openaiKey() {
@@ -228,10 +254,11 @@ export function resolveCategoryName(
 
   const n = productName.toLowerCase().replace(/['ʼ`‘’]/g, "");
   // short words only as whole words ("un" must not hit "universal"), longer ones as word prefixes
-  const hasWord = (w: string) =>
-    new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${w.length <= 3 ? "(?![\\p{L}])" : ""}`, "u").test(n);
+  const hasWord = (w: string, whole = w.length <= 3) =>
+    new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${whole ? "(?![\\p{L}])" : ""}`, "u").test(n);
 
-  const rules: Array<{ cat: string[]; words: string[]; label: string }> = [
+  // "whole" words never match as a prefix: "qand" is sugar, "qandolat" is confectionery.
+  const rules: Array<{ cat: string[]; words: string[]; whole?: string[]; label: string }> = [
     {
       label: "Ichimliklar",
       cat: ["ichimliklar", "ichimlik", "drinks", "напитки"],
@@ -303,9 +330,15 @@ export function resolveCategoryName(
       words: ["sut", "qatiq", "yogurt", "pishloq", "sariyog", "smetana", "tvoroq", "kefir"],
     },
     {
+      label: "Qand-shakar",
+      cat: ["qand-shakar", "qand shakar", "shakar", "сахар"],
+      words: ["shakar", "novvot", "navvot", "nabot", "rafinad", "сахар", "рафинад", "нават"],
+      whole: ["qand", "қанд", "канд"],
+    },
+    {
       label: "Yorma va yog'",
       cat: ["yorma va yog'", "yorma", "yog", "крупа"],
-      words: ["guruch", "un", "yog", "moy", "makaron", "grechka", "yorma", "shakar", "tuz"],
+      words: ["guruch", "un", "yog", "moy", "makaron", "grechka", "yorma", "tuz"],
     },
     {
       label: "Shirinlik",
@@ -343,7 +376,7 @@ export function resolveCategoryName(
   ];
 
   for (const rule of rules) {
-    if (rule.words.some((w) => hasWord(w.replace(/['ʼ`‘’]/g, "")))) {
+    if (rule.words.some((w) => hasWord(w.replace(/['ʼ`‘’]/g, ""))) || rule.whole?.some((w) => hasWord(w, true))) {
       const hit = findCat(...rule.cat, rule.label);
       if (hit) return hit;
       const fresh = listCategories().find((c) => c.name.toLowerCase() === rule.label.toLowerCase());
@@ -424,6 +457,8 @@ Toifa misollari:
 - Olma, pomidor, sabzi → Sabzavot-meva
 - Sut, yogurt, pishloq → Sut mahsulotlari
 - Go'sht, tuxum, kolbasa → Go'sht-tuxum
+- Qand, shakar, novvot, rafinad → Qand-shakar
+- Guruch, un, yog‘, makaron → Yorma va yog‘
 - Shokolad, konfet, pechene → Shirinlik
 - Semechka, chips, yong‘oq, pista, qurt, suxarik → Gazaklar (yoki Shirinlik)
 - Marker, daftar, ruchka → Kanselyariya (agar bor bo‘lsa)
