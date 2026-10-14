@@ -663,7 +663,7 @@ export function KassaScreen() {
         <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-1 md:w-40 md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pb-0 md:pr-1">
           <button
             onClick={() => setCategoryId(0)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-medium leading-5 md:w-full md:whitespace-normal md:rounded-lg md:px-3 md:py-1.5 md:text-left md:leading-tight ${categoryId === 0 ? "bg-brand text-white" : "bg-white border border-line"}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs! font-extrabold leading-5 md:w-full md:whitespace-normal md:rounded-lg md:px-3 md:py-1.5 md:text-left md:leading-tight ${categoryId === 0 ? "bg-brand text-white" : "border border-line bg-white text-slate-900"}`}
           >
             Hammasi
           </button>
@@ -674,8 +674,8 @@ export function KassaScreen() {
               <button
                 key={c.id}
                 onClick={() => setCategoryId(c.id)}
-                style={on ? { background: col, borderColor: col, color: "#fff" } : { background: `${col}14`, borderColor: `${col}59`, color: col }}
-                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs! font-semibold leading-5 md:w-full md:whitespace-normal md:rounded-lg md:border-l-4 md:px-3 md:py-1.5 md:text-left md:leading-tight"
+                style={on ? { background: col, borderColor: col, color: "#fff" } : { background: `${col}1f`, borderColor: `${col}80`, color: darken(col) }}
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs! font-extrabold leading-5 md:w-full md:whitespace-normal md:rounded-lg md:border-l-4 md:px-3 md:py-1.5 md:text-left md:leading-tight"
               >
                 <span className="h-2 w-2 shrink-0 rounded-full md:hidden" style={{ background: on ? "#fff" : col }} />
                 {c.name}
@@ -1322,6 +1322,12 @@ const CATEGORY_COLORS: [RegExp, string][] = [
   [/choy|qahva|чай|коф/i, "#166534"],
 ];
 const CATEGORY_PALETTE = ["#0f766e", "#0369a1", "#7c3aed", "#be185d", "#c2410c", "#4338ca", "#15803d", "#b45309"];
+
+function darken(hex: string, f = 0.6) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (shift: number) => Math.round(((n >> shift) & 255) * f).toString(16).padStart(2, "0");
+  return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
 
 function categoryColor(c: { id: number; name: string; color: string }) {
   for (const [re, col] of CATEGORY_COLORS) if (re.test(c.name)) return col;
