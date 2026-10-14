@@ -1424,7 +1424,8 @@ function QtyInput({ value, whole, onCommit }: { value: number; whole: boolean; o
 
 const CATEGORY_COLORS: [RegExp, string][] = [
   [/non|bulk|xleb|хлеб|нон/i, "#b45309"],
-  [/sabzavot|meva|овощ|фрукт/i, "#15803d"],
+  [/sabzavot|овощ/i, "#15803d"],
+  [/meva|фрукт/i, "#ca8a04"],
   [/go.?sht|tuxum|kolbas|мяс|яйц/i, "#b91c1c"],
   [/sut|qatiq|pishloq|молоч|сыр/i, "#0284c7"],
   [/ichimlik|suv|sharbat|напит|вод/i, "#0369a1"],

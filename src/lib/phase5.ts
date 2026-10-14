@@ -49,6 +49,7 @@ export function migratePhase5(db: DatabaseSync) {
 
   fs.mkdirSync(uploadsDir("products"), { recursive: true });
   moveSugarToOwnCategory(db);
+  splitFruitCategory(db);
 
   const ver = db.prepare("SELECT value FROM settings WHERE key = 'schema_version'").get() as { value: string } | undefined;
   if (ver?.value === PHASE5) return;
@@ -81,6 +82,37 @@ function moveSugarToOwnCategory(db: DatabaseSync) {
     db.prepare(`UPDATE products SET category_id = ? WHERE id IN (${ids.join(",")})`).run(cat.id);
   }
   db.prepare("INSERT INTO settings (key, value) VALUES ('migr_qand_shakar', ?) ON CONFLICT(key) DO NOTHING").run(String(ids.length));
+}
+
+const FRUIT_PREFIX = ["olma", "banan", "apelsin", "mandarin", "uzum", "anor", "shaftoli", "olcha", "gilos", "qulupnay", "kivi", "xurmo", "ananas", "qovun", "tarvuz", "behi", "anjir", "meva"];
+const FRUIT_WHOLE = ["nok", "limon"];
+const FRUIT_SQL = `((${[
+  ...FRUIT_PREFIX.map((w) => `lower(name) LIKE '${w}%' OR lower(name) LIKE '% ${w}%'`),
+  ...FRUIT_WHOLE.map((w) => `lower(name) = '${w}' OR lower(name) LIKE '${w} %' OR lower(name) LIKE '% ${w}' OR lower(name) LIKE '% ${w} %'`),
+].join(" OR ")}) AND NOT (lower(name) LIKE '%sharbat%' OR lower(name) LIKE '%sok%' OR lower(name) LIKE '%juice%'
+  OR lower(name) LIKE '%choy%' OR lower(name) LIKE '%nektar%' OR lower(name) LIKE '%kompot%' OR lower(name) LIKE '%limonad%'))`;
+
+// Runs once: "Sabzavot-meva" becomes "Sabzavot" and its fruit moves to "Mevalar"; hand-filed products elsewhere stay put.
+function splitFruitCategory(db: DatabaseSync) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'migr_mevalar'").get()) return;
+  const cats = db.prepare("SELECT id, name FROM categories").all() as Array<{ id: number; name: string }>;
+  const veg = cats.filter((c) => c.name.toLowerCase().startsWith("sabzavot")).map((c) => c.id);
+  const mixed = cats.find((c) => c.name.toLowerCase() === "sabzavot-meva");
+  if (mixed && !cats.some((c) => c.name.toLowerCase() === "sabzavot")) {
+    db.prepare("UPDATE categories SET name = 'Sabzavot' WHERE id = ?").run(mixed.id);
+  }
+  const from = `(category_id IS NULL${veg.length ? ` OR category_id IN (${veg.join(",")})` : ""})`;
+  const ids = (db.prepare(`SELECT id FROM products WHERE ${FRUIT_SQL} AND ${from}`).all() as Array<{ id: number }>).map((r) => r.id);
+  if (ids.length) {
+    let cat = db.prepare("SELECT id FROM categories WHERE lower(name) = 'mevalar'").get() as { id: number } | undefined;
+    if (!cat) {
+      const sort = (db.prepare("SELECT COALESCE(MAX(sort), 0) + 1 AS s FROM categories").get() as { s: number }).s;
+      const info = db.prepare("INSERT INTO categories (name, color, sort) VALUES ('Mevalar', '#ca8a04', ?)").run(sort);
+      cat = { id: Number(info.lastInsertRowid) };
+    }
+    db.prepare(`UPDATE products SET category_id = ? WHERE id IN (${ids.join(",")})`).run(cat.id);
+  }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('migr_mevalar', ?) ON CONFLICT(key) DO NOTHING").run(String(ids.length));
 }
 
 export function openaiKey() {
@@ -301,23 +333,54 @@ export function resolveCategoryName(
       words: ["non", "bulochka", "lavash", "baget", "bread", "lepyoshka", "patir"],
     },
     {
-      label: "Sabzavot-meva",
-      cat: ["sabzavot-meva", "sabzavot", "meva", "овощи", "фрукты"],
+      label: "Mevalar",
+      cat: ["mevalar", "meva", "фрукты"],
       words: [
         "olma",
         "banan",
         "apelsin",
+        "mandarin",
         "uzum",
+        "anor",
+        "shaftoli",
+        "orik",
+        "olcha",
+        "gilos",
+        "qulupnay",
+        "kivi",
+        "xurmo",
+        "ananas",
+        "qovun",
+        "tarvuz",
+        "behi",
+        "anjir",
+        "meva",
+        "яблок",
+        "банан",
+        "виноград",
+        "фрукт",
+      ],
+      whole: ["nok", "limon"],
+    },
+    {
+      label: "Sabzavot",
+      cat: ["sabzavot", "овощи"],
+      words: [
         "pomidor",
         "bodring",
         "kartoshka",
         "sabzi",
         "piyoz",
-        "qovun",
-        "tarvuz",
-        "meva",
+        "lavlagi",
+        "qalampir",
+        "baqlajon",
+        "sarimsoq",
+        "kashnich",
+        "ukrop",
         "sabzavot",
+        "овощ",
       ],
+      whole: ["karam"],
     },
     {
       label: "Go'sht-tuxum",
@@ -454,7 +517,8 @@ ${categories.length ? categories.map((c) => `- ${c}`).join("\n") : "- (toifa yo�
 Toifa misollari:
 - Fanta, Coca-Cola, Pepsi, Sprite, suv, sok, choy, qahva → Ichimliklar (yoki ro‘yxatdagi ichimlik toifasi)
 - Non, bulochka, lavash → Non
-- Olma, pomidor, sabzi → Sabzavot-meva
+- Pomidor, sabzi, kartoshka → Sabzavot
+- Olma, uzum, banan, anor → Mevalar
 - Sut, yogurt, pishloq → Sut mahsulotlari
 - Go'sht, tuxum, kolbasa → Go'sht-tuxum
 - Qand, shakar, novvot, rafinad → Qand-shakar
