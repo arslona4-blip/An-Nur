@@ -572,13 +572,14 @@ export async function transcribeAudio(file: File): Promise<string> {
   const key = openaiKey();
   if (!key) throw new Error("OpenAI API kaliti sozlanmagan — Sozlamalar → AI mahsulot");
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const hint = "Do‘kon mahsulotlari ro‘yxati: Coca-Cola 1,5 litr 14 ming, 24 ta. Non 4 ming, 30 ta. Shakar 1 kilo 13 ming.";
+  // The API has no "uz" language code, so an Uzbek Latin sample steers auto-detection instead.
+  const hint =
+    "O‘zbek tilida do‘kon mahsulotlari ro‘yxati: Coca-Cola bir yarim litr o‘n to‘rt ming so‘m, yigirma to‘rtta. Non to‘rt ming, o‘ttizta. Shakar bir kilo o‘n uch ming. Olma, uzum, pista, yog‘, guruch.";
 
   async function run(model: string) {
     const form = new FormData();
     form.append("file", file, file.name || "ovoz.webm");
     form.append("model", model);
-    form.append("language", "uz");
     form.append("prompt", hint);
     const res = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: "POST",
@@ -605,7 +606,7 @@ export async function tidyDictation(text: string): Promise<{ lines: string[] }> 
 
   const prompt = `Do‘kon egasi mahsulotlarini ovoz bilan aytdi, brauzer uni matnga o‘girdi (xatolar, pauzadagi nuqtalar, takrorlar bor).
 Uni toza ro‘yxatga aylantiring: HAR BIR MAHSULOT ALOHIDA QATOR, ko‘rinishi: "Nomi hajmi, narxi so‘m, miqdori".
-- Faqat lotin harflari. Kirillni lotinga o‘giring.
+- Faqat lotin harflari. Kirillni lotinga o‘giring. Matn rus, turk yoki qozoq yozuviga o‘xshab chiqqan bo‘lsa ham — bu o‘zbekcha gap, mahsulotlarni o‘zbekcha yozing.
 - Brend nomlarini rasmiy imlosida yozing: "koka kola" → "Coca-Cola", "pepsi" → "Pepsi", "fanta" → "Fanta", "sprayt" → "Sprite", "nestle" → "Nestle", "lipton" → "Lipton", "ariyel" → "Ariel", "snikers" → "Snickers".
 - Sonlarni faqat raqam bilan: "bir yarim litr" yoki "1. Yarim litr" → "1,5 L"; "yarim litr" → "0,5 L"; "o‘n to‘rt ming" yoki "14. Mingdan" → "14 000 so‘m"; "yigirma to‘rtta" → "24 ta"; "5 kilo" → "5 kg".
 - Pauzada bo‘lingan bo‘laklarni bitta mahsulotga birlashtiring; ketma-ket takrorlangan nomni bir marta yozing.
