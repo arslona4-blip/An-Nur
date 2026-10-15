@@ -3,6 +3,7 @@
 import { Camera, ScanLine, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { LinkBarcode } from "@/components/LinkBarcode";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import { sameBarcode, STORE_BARCODE_PREFIX } from "@/lib/ean13";
@@ -109,8 +110,21 @@ export function StockScreen() {
         : { product_id: 0, name: "", unit: "dona", qty: "1", buy_price: "", sell_price: "", expiry_date: "", barcode: c };
       return [fresh, ...prev];
     });
-    setScanNote(p ? `${p.name} qo‘shildi` : `Yangi shtrix kod ${c} — nomi va narxini yozing yoki ro‘yxatdan tanlang`);
+    setScanNote(p ? `${p.name} qo‘shildi` : `Yangi shtrix kod ${c} — nomi internetdan qidirilmoqda…`);
     codeRef.current?.focus();
+    if (!p) lookupName(c);
+  }
+
+  async function lookupName(c: string) {
+    const r = await api<{ name: string | null }>(`/api/products/lookup?code=${encodeURIComponent(c)}`).catch(() => ({ name: null }));
+    if (r.name) {
+      setLines((prev) => prev.map((l) => (!l.product_id && l.barcode === c && !l.name.trim() ? { ...l, name: r.name! } : l)));
+    }
+    setScanNote(
+      r.name
+        ? `Nomi topildi: ${r.name} — tekshirib, narxini yozing`
+        : `Shtrix kod ${c} internet bazasida yo‘q — nomini yozing yoki bazadan toping`,
+    );
   }
 
   const addByCodeRef = useRef(addByCode);
@@ -119,6 +133,25 @@ export function StockScreen() {
   });
   const onScanCode = useCallback((c: string) => addByCodeRef.current(c), []);
   const closeScan = useCallback(() => setScanOpen(false), []);
+
+  function linkLine(i: number, p: Product) {
+    setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+    setLines((prev) =>
+      prev.map((x, idx) =>
+        idx !== i
+          ? x
+          : {
+              ...x,
+              product_id: p.id,
+              name: p.name,
+              unit: p.unit,
+              buy_price: x.buy_price || String(p.buy_price),
+              sell_price: x.sell_price || String(p.sell_price),
+            },
+      ),
+    );
+    setScanNote(`${p.name} — shtrix kod biriktirildi`);
+  }
 
   function patchLine(i: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
@@ -378,7 +411,7 @@ export function StockScreen() {
                         <button
                           key={u}
                           type="button"
-                          className={`rounded-full border px-2 py-0.5 text-xs! ${l.unit === u ? "border-primary bg-primary text-white" : "border-line"}`}
+                          className={`rounded-full border px-2 py-0.5 text-xs! ${l.unit === u ? "border-brand bg-brand font-bold text-white" : "border-line"}`}
                           onClick={() => patchLine(i, { unit: u })}
                         >
                           {u}
@@ -387,7 +420,10 @@ export function StockScreen() {
                     : null}
                 </div>
               ) : null}
-              {aiNote || (l.barcode && !l.product_id) ? (
+              {l.barcode && !l.product_id ? (
+                <LinkBarcode<Product> barcode={l.barcode} autoFocus={false} onLinked={(p) => linkLine(i, p)} />
+              ) : null}
+              {aiNote ? (
                 <Select value={l.product_id || ""} onChange={(e) => relink(i, e.target.value)} className="py-1.5 text-sm">
                   <option value="">➕ Yangi mahsulot sifatida qo‘shish</option>
                   {products.map((p) => (
@@ -397,7 +433,7 @@ export function StockScreen() {
                   ))}
                 </Select>
               ) : null}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 [&>label]:min-w-0">
                 <label className="text-xs text-muted">
                   Miqdor ({l.unit})
                   <Input value={l.qty} inputMode="decimal" onChange={(e) => patchLine(i, { qty: e.target.value })} />
@@ -410,10 +446,11 @@ export function StockScreen() {
                   Sotish narxi
                   <Input value={l.sell_price} inputMode="numeric" onChange={(e) => patchLine(i, { sell_price: e.target.value })} />
                 </label>
-                <label className="text-xs text-muted">
+                <label className="min-w-0 text-xs text-muted">
                   Muddati
                   <Input
                     type="date"
+                    className="h-[46px] w-full min-w-0 appearance-none"
                     value={l.expiry_date}
                     suppressHydrationWarning
                     onChange={(e) => patchLine(i, { expiry_date: e.target.value })}

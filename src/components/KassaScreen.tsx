@@ -27,7 +27,16 @@ type Product = {
   min_stock?: number;
 };
 type Category = { id: number; name: string; color: string };
-type NewProductDraft = { barcode: string; name: string; sell_price: string; buy_price: string; stock: string; unit: string; category_id: string };
+type NewProductDraft = {
+  barcode: string;
+  name: string;
+  sell_price: string;
+  buy_price: string;
+  stock: string;
+  unit: string;
+  category_id: string;
+  lookup?: "wait" | "found" | "none";
+};
 type Customer = { id: number; name: string; phone: string | null; debt: number; bonus?: number };
 type CartLine = { product: Product; qty: number };
 type ParkedSale = { id: string; at: string; cart: CartLine[]; customerId: number; discount: number; method: string };
@@ -297,7 +306,14 @@ export function KassaScreen() {
           return;
         }
         setNewError("");
-        setNewDraft({ barcode: code, name: "", sell_price: "", buy_price: "", stock: "", unit: "dona", category_id: categoryId ? String(categoryId) : "" });
+        setNewDraft({ barcode: code, name: "", sell_price: "", buy_price: "", stock: "", unit: "dona", category_id: categoryId ? String(categoryId) : "", lookup: "wait" });
+        api<{ name: string | null }>(`/api/products/lookup?code=${encodeURIComponent(code)}`)
+          .catch(() => ({ name: null }))
+          .then((r) =>
+            setNewDraft((d) =>
+              d && d.barcode === code ? { ...d, name: d.name.trim() ? d.name : r.name || "", lookup: r.name ? "found" : "none" } : d,
+            ),
+          );
       })
       .catch((err) => setError(err.message));
   }
@@ -925,6 +941,9 @@ export function KassaScreen() {
           <form className="space-y-3" onSubmit={saveNew}>
             <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Shtrix-kod <span className="num font-bold">{newDraft.barcode}</span> bazada yo‘q.
+              {newDraft.lookup === "wait" ? " Nomi internetdan qidirilmoqda…" : null}
+              {newDraft.lookup === "found" ? " Nomi internetdan topildi — tekshiring." : null}
+              {newDraft.lookup === "none" ? " Internet bazasida ham yo‘q — nomini yozing." : null}
             </div>
             <LinkBarcode barcode={newDraft.barcode} onLinked={onLinked} />
             <div className="text-sm font-semibold text-muted">Yoki yangi mahsulot sifatida qo‘shing:</div>

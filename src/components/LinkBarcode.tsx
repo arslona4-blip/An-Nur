@@ -8,7 +8,15 @@ import { STORE_BARCODE_PREFIX } from "@/lib/ean13";
 type Found = { id: number; name: string; barcode: string | null };
 
 // Products added by list/photo got an internal "29..." code; the factory code from the pack replaces it.
-export function LinkBarcode<T extends Found>({ barcode, onLinked }: { barcode: string; onLinked: (product: T) => void }) {
+export function LinkBarcode<T extends Found>({
+  barcode,
+  onLinked,
+  autoFocus = true,
+}: {
+  barcode: string;
+  onLinked: (product: T) => void;
+  autoFocus?: boolean;
+}) {
   const [q, setQ] = useState("");
   const [list, setList] = useState<T[]>([]);
   const [busy, setBusy] = useState(false);
@@ -44,7 +52,7 @@ export function LinkBarcode<T extends Found>({ barcode, onLinked }: { barcode: s
   return (
     <div className="space-y-2 rounded-xl border border-line p-3">
       <div className="text-sm font-semibold">Bu mahsulot bazada bormi? Toping va biriktiring</div>
-      <Input autoFocus value={q} placeholder="Nomini yozing: kola, shakar..." onChange={(e) => search(e.target.value)} />
+      <Input autoFocus={autoFocus} value={q} placeholder="Nomini yozing: kola, shakar..." onChange={(e) => search(e.target.value)} />
       {list.map((p) => (
         <button
           key={p.id}
