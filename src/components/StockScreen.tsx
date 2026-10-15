@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { Button, Card, Field, Input, Modal, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { sameBarcode, STORE_BARCODE_PREFIX } from "@/lib/ean13";
 import { som, tashkentDateTime, UNITS } from "@/lib/format";
 
 type Product = { id: number; name: string; barcode: string | null; sku: string; buy_price: number; sell_price: number; unit: string; stock: number };
@@ -96,7 +97,7 @@ export function StockScreen() {
     const c = raw.trim();
     setCode("");
     if (!c) return;
-    const p = products.find((x) => x.barcode === c || x.sku === c);
+    const p = products.find((x) => sameBarcode(x.barcode, c) || x.sku === c);
     setLines((prev) => {
       const at = prev.findIndex((l) => (p ? l.product_id === p.id : !l.product_id && l.barcode === c));
       if (at >= 0) {
@@ -186,7 +187,7 @@ export function StockScreen() {
         const l = ready[i];
         if (l.product_id) {
           const known = products.find((p) => p.id === l.product_id);
-          if (l.barcode && known && !known.barcode) {
+          if (l.barcode && known && (!known.barcode || known.barcode.startsWith(STORE_BARCODE_PREFIX))) {
             await api("/api/products", { method: "PUT", body: JSON.stringify({ id: known.id, barcode: l.barcode }) });
           }
           continue;

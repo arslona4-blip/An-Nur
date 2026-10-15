@@ -19,6 +19,12 @@ export function normalizeEan(code: string | null | undefined) {
   return c;
 }
 
+/** UPC-A (12) and its EAN-13 form ("0" + 12) are the same pack; scanners report either one. */
+export function sameBarcode(a: string | null | undefined, b: string | null | undefined) {
+  const x = normalizeEan(a);
+  return !!x && x === normalizeEan(b);
+}
+
 export function isPrintableEan(code: string | null | undefined) {
   const c = normalizeEan(code);
   if (!/^(\d{8}|\d{13})$/.test(c)) return false;

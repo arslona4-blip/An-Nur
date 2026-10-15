@@ -11,6 +11,8 @@ import { api, NetworkError } from "@/lib/client";
 import { onDisplayHello, publishDisplay } from "@/lib/customerDisplay";
 import { queueOfflineSale } from "@/lib/offline";
 import { dualPrice, methodLabel, PAYMENT_METHODS, som } from "@/lib/format";
+import { LinkBarcode } from "@/components/LinkBarcode";
+import { sameBarcode } from "@/lib/ean13";
 import { isLowStock } from "@/lib/stock";
 
 type Product = {
@@ -281,9 +283,9 @@ export function KassaScreen() {
   }
 
   function findCode(code: string) {
-    load(code)
+    load(code.replace(/^0(?=\d{12}$)/, ""))
       .then((list) => {
-        const hit = list.find((p) => p.barcode === code);
+        const hit = list.find((p) => sameBarcode(p.barcode, code));
         if (hit) {
           pick(hit);
           setQ("");
@@ -298,6 +300,14 @@ export function KassaScreen() {
         setNewDraft({ barcode: code, name: "", sell_price: "", buy_price: "", stock: "", unit: "dona", category_id: categoryId ? String(categoryId) : "" });
       })
       .catch((err) => setError(err.message));
+  }
+
+  function onLinked(product: Product) {
+    setNewDraft(null);
+    setQ("");
+    pick(product);
+    load("").catch(() => {});
+    searchRef.current?.focus();
   }
 
   async function saveNew(e: React.FormEvent) {
@@ -400,7 +410,7 @@ export function KassaScreen() {
     e.preventDefault();
     const code = q.trim();
     if (!code) return;
-    const exact = products.find((p) => p.barcode === code || p.name.toLowerCase() === code.toLowerCase());
+    const exact = products.find((p) => sameBarcode(p.barcode, code) || p.name.toLowerCase() === code.toLowerCase());
     if (exact) {
       pick(exact);
       setQ("");
@@ -914,11 +924,13 @@ export function KassaScreen() {
         {newDraft ? (
           <form className="space-y-3" onSubmit={saveNew}>
             <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Shtrix-kod <span className="num font-bold">{newDraft.barcode}</span> bazada yo‘q. Nomi va narxini yozing — saqlanadi va savatga tushadi.
+              Shtrix-kod <span className="num font-bold">{newDraft.barcode}</span> bazada yo‘q.
             </div>
+            <LinkBarcode barcode={newDraft.barcode} onLinked={onLinked} />
+            <div className="text-sm font-semibold text-muted">Yoki yangi mahsulot sifatida qo‘shing:</div>
             <label className="block space-y-1 text-sm">
               <span className="font-medium text-muted">Nomi</span>
-              <Input autoFocus required value={newDraft.name} placeholder="Masalan: Coca-Cola 1.5 L" onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} />
+              <Input required value={newDraft.name} placeholder="Masalan: Coca-Cola 1.5 L" onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} />
             </label>
             <label className="block space-y-1 text-sm">
               <span className="font-medium text-muted">Sotish narxi (so‘m)</span>
@@ -1358,7 +1370,7 @@ export function KassaScreen() {
         <BarcodeScanner
           onScan={(code) => {
             setQ(code);
-            const exact = products.find((p) => p.barcode === code);
+            const exact = products.find((p) => sameBarcode(p.barcode, code));
             if (exact) {
               pick(exact);
               setQ("");
